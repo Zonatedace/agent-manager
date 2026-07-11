@@ -75,6 +75,16 @@ pub struct CliStatus {
     pub name: String,
     pub available: bool,
     pub path: Option<String>,
+    /// CLI binary found and appears authenticated (best-effort).
+    /// Auth itself is performed on the front-end / user machine — never in Docker.
+    #[serde(default)]
+    pub authenticated: bool,
+    /// Short human hint for the UI (how to log in, or why unavailable).
+    #[serde(default)]
+    pub auth_hint: String,
+    /// Suggested login / auth command for the user to run locally.
+    #[serde(default)]
+    pub auth_command: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -583,16 +593,86 @@ fn discover_grok_models() -> CliModelCatalog {
     }
 }
 
+fn auth_meta(name: &str, available: bool) -> (bool, String, String) {
+    if !available {
+        return (
+            false,
+            format!("{name} CLI not found on PATH — install it on this machine (not in Docker)."),
+            String::new(),
+        );
+    }
+    match name {
+        "claude" => {
+            let cmd = "claude /login".to_string();
+            // credentials file is a strong signal
+            let home = crate::settings::home_dir();
+            let cred = home
+                .as_ref()
+                .map(|h| h.join(".claude").join(".credentials.json"))
+                .filter(|p| p.is_file());
+            if cred.is_some() {
+                (true, "Signed in (local credentials found). Auth stays on this machine.".into(), cmd)
+            } else {
+                (false, "Not signed in — run the auth command below in a terminal on this PC.".into(), cmd)
+            }
+        }
+        "grok" => {
+            let cmd = "grok".to_string();
+            let home = crate::settings::home_dir();
+            let has = home
+                .as_ref()
+                .map(|h| {
+                    h.join(".grok").is_dir()
+                        || h.join(".config").join("grok").is_dir()
+                        || std::env::var_os("XAI_API_KEY").is_some()
+                        || std::env::var_os("GROK_API_KEY").is_some()
+                })
+                .unwrap_or(false);
+            if has {
+                (true, "Credentials detected locally. Auth is not stored on the server.".into(), cmd)
+            } else {
+                (
+                    false,
+                    "No local Grok/xAI credentials found — sign in via the Grok CLI on this PC.".into(),
+                    cmd,
+                )
+            }
+        }
+        "codex" => {
+            let cmd = "codex login".to_string();
+            let home = crate::settings::home_dir();
+            let has = home
+                .as_ref()
+                .map(|h| {
+                    h.join(".codex").join("auth.json").is_file()
+                        || h.join(".codex").join("config.toml").is_file()
+                })
+                .unwrap_or(false);
+            if has {
+                (true, "Codex config present locally. Complete login on this PC if meters show signed out.".into(), cmd)
+            } else {
+                (false, "Not signed in — run `codex login` on this machine.".into(), cmd)
+            }
+        }
+        _ => (false, String::new(), String::new()),
+    }
+}
+
 pub fn discover() -> AgentDiscovery {
     let names = ["grok", "claude", "codex"];
     let clis = names
         .iter()
         .map(|n| {
             let path = which_cli(n);
+            let available = path.is_some();
+            let (authenticated, auth_hint, auth_command) = auth_meta(n, available);
             CliStatus {
                 name: n.to_string(),
-                available: path.is_some(),
+                available,
                 path: path.map(|p| p.to_string_lossy().to_string()),
+                authenticated,
+                auth_hint,
+                auth_command,
             }
         })
         .collect();

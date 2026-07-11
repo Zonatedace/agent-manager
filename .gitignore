@@ -6,6 +6,7 @@
 agent-manager.log
 agent-manager.pid
 agent-manager.config.json
+agent-manager.client.json
 *.log
 
 # Local MCP dumps / scratch (not part of the app)

@@ -56,8 +56,16 @@ Checked items are done; open items are still planned.
 - [x] Filesystem browser for project context
 - [x] Dev runners: `run.ps1`, `restart.ps1`, `ensure-running.ps1` (no Task Scheduler)
 - [x] Windows desktop app (WebView2 via tao/wry; `--mode server` for headless)
-- [ ] Container / k8s deployment manifests (server mode)
-- [ ] Health banner auto-restart option (opt-in; still no Task Scheduler unless user chooses)
+- [x] Thin Windows client (`--mode client`) with required **Server URL** (prompt until set)
+- [x] Client config `agent-manager.client.json` + `AGENT_MANAGER_SERVER_URL` / `--server-url`
+- [x] Server bind host (`--host` / `AGENT_MANAGER_HOST`) for LAN clients
+- [x] Windows Service host (`--mode service`) with graceful stop (optional; Docker preferred for always-on)
+- [x] `install-service.ps1` / `deploy-service.ps1` (build + redeploy service)
+- [x] Docker server (`Dockerfile` + `docker-compose.yml`) — **no** agent CLIs in image
+- [x] Settings: enable/disable coding agents + per-provider toggles; auth status on front-end
+- [x] `AGENT_MANAGER_ALLOW_AGENTS=0` in container; agents gated on API
+- [ ] Health banner auto-restart option (opt-in)
+- [ ] Optional local agent bridge so Docker UI + Windows client can run CLIs on the client only
 - [ ] Export / print filtered TODO list
 - [ ] Dark/light theme toggle
 

@@ -36,11 +36,14 @@ futures = "0.3"
 tokio-stream = { version = "0.1", features = ["sync"] }
 ureq = { version = "2", features = ["json"] }
 
-# Native Windows desktop shell (WebView2)
+# Windows desktop shell (WebView2) + optional Windows Service host.
+# Linux/Docker server builds omit these so the image stays lean (no agents, no UI shell).
+[target.'cfg(windows)'.dependencies]
 tao = "0.32"
 wry = "0.50"
+windows-service = "0.8"
 
-[build-dependencies]
+[target.'cfg(windows)'.build-dependencies]
 winres = "0.1"
 
 [profile.release]

@@ -1,12 +1,16 @@
-# Deprecated for this project.
-# We do NOT use Windows Task Scheduler to keep the dashboard up.
+# Prefer the Windows Service for always-on Agent Manager.
+# Task Scheduler is not used.
 #
-# Local dev:
-#   .\restart.ps1          # build + restart after code changes
-#   .\run.ps1              # run in foreground (keep window open)
-#   .\ensure-running.ps1   # start only if down
+#   .\deploy-service.ps1          # build + install/update service (admin)
+#   .\install-service.ps1         # same without forcing rebuild unless needed
+#   .\install-service.ps1 -Uninstall
 #
-# Production: container / k8s Deployment with restartPolicy.
-Write-Host "Task Scheduler autostart is disabled for this project."
-Write-Host "Use .\restart.ps1 after code changes, or deploy as a container/k8s pod."
+Write-Host "Agent Manager uses a Windows Service (not Task Scheduler)."
+Write-Host ""
+Write-Host "  Elevated PowerShell:"
+Write-Host "    .\deploy-service.ps1"
+Write-Host ""
+Write-Host "  Then connect with the desktop client:"
+Write-Host "    .\run.ps1 --client --server-url http://127.0.0.1:7878/"
+Write-Host ""
 exit 0

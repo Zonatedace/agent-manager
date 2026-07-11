@@ -1,0 +1,43 @@
+# Agent Manager server (no coding agents in the container).
+#
+#   # set repos host path, then:
+#   docker compose up -d --build
+#
+# Windows client:
+#   agent-manager --mode client --server-url http://127.0.0.1:7878/
+# Enable coding agents only in the app Settings on a machine with CLIs installed.
+
+services:
+  agent-manager:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: agent-manager:local
+    container_name: agent-manager
+    restart: unless-stopped
+    ports:
+      - "${AGENT_MANAGER_PORT:-7878}:7878"
+    environment:
+      AGENT_MANAGER_ROOT: /data/repos
+      AGENT_MANAGER_HOST: "0.0.0.0"
+      AGENT_MANAGER_PORT: "7878"
+      AGENT_MANAGER_CONFIG: /data/config/agent-manager.config.json
+      AGENT_MANAGER_LOG_FILE: /data/logs/agent-manager.log
+      AGENT_MANAGER_LOG_LEVEL: ${AGENT_MANAGER_LOG_LEVEL:-info}
+      # Hard-off: image has no claude/grok/codex
+      AGENT_MANAGER_ALLOW_AGENTS: "0"
+    volumes:
+      # Host folder that contains your project repos (TODO.md trees)
+      - ${AGENT_MANAGER_ROOT:?Set AGENT_MANAGER_ROOT to your repos folder}:/data/repos
+      - agent-manager-config:/data/config
+      - agent-manager-logs:/data/logs
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:7878/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 45s
+
+volumes:
+  agent-manager-config:
+  agent-manager-logs:

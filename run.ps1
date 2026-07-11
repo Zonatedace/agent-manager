@@ -1,5 +1,7 @@
 # Launch Agent Manager as a Windows app (native WebView2 window).
-# For HTTP-only mode: .\run.ps1 --server
+# For HTTP-only mode:  .\run.ps1 --server
+# For thin client:     .\run.ps1 --client
+#                      .\run.ps1 --client --server-url http://127.0.0.1:7878/
 $ErrorActionPreference = "Stop"
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $here
@@ -23,6 +25,7 @@ $pass = @()
 foreach ($a in $args) {
     if ($a -eq "--build") { continue }
     if ($a -eq "--server") { $pass += @("--mode", "server"); continue }
+    if ($a -eq "--client") { $pass += @("--mode", "client"); continue }
     $pass += $a
 }
 
@@ -31,8 +34,11 @@ Write-Host "  log: $log"
 if ($pass -contains "server") {
     Write-Host "  mode: server  http://127.0.0.1:7878/"
     & $exe @pass --log-file $log --log-level info
+} elseif ($pass -contains "client") {
+    Write-Host "  mode: client (server URL prompted until set)"
+    Start-Process -FilePath $exe -ArgumentList (@("--log-file", $log, "--log-level", "info") + $pass) -WorkingDirectory $here
 } else {
-    Write-Host "  mode: desktop window"
+    Write-Host "  mode: desktop window (local server)"
     # Start detached so this shell can return; window is the app UI
     Start-Process -FilePath $exe -ArgumentList (@("--log-file", $log, "--log-level", "info") + $pass) -WorkingDirectory $here
 }

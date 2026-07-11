@@ -1,18 +1,33 @@
-# Rebuild + restart Agent Manager (Windows app by default).
-#   .\restart.ps1
+# Rebuild + restart Agent Manager.
+#   .\restart.ps1                 # desktop app (default)
 #   .\restart.ps1 --no-build
-#   .\restart.ps1 --server          # headless HTTP instead of window
+#   .\restart.ps1 --server        # headless process (not service)
+#   .\restart.ps1 --service       # build + redeploy Windows Service (admin)
 $ErrorActionPreference = "Stop"
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $here
 $env:Path = "$env:USERPROFILE\.cargo\bin;" + $env:Path
+
+if ($args -contains "--service") {
+    $deploy = Join-Path $here "deploy-service.ps1"
+    $fwd = @()
+    if ($args -contains "--no-build") { $fwd += "-NoBuild" }
+    & $deploy @fwd
+    exit $LASTEXITCODE
+}
 
 $exe = Join-Path $here "target\release\agent-manager.exe"
 $log = Join-Path $here "agent-manager.log"
 $doBuild = -not ($args -contains "--no-build")
 $serverMode = $args -contains "--server"
 
-Write-Host "Stopping any running agent-manager..."
+Write-Host "Stopping any running agent-manager processes..."
+# Do not kill the Windows Service binary path via Stop-Process if service is the desired host —
+# only stop loose processes; for service use --service.
+$svc = Get-Service -Name "AgentManager" -ErrorAction SilentlyContinue
+if ($svc -and $svc.Status -eq "Running" -and $serverMode) {
+    Write-Host "Note: Windows Service AgentManager is running. Use .\restart.ps1 --service to redeploy it."
+}
 Get-Process -Name "agent-manager" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 Start-Sleep -Milliseconds 400
 
