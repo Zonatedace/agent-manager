@@ -30,7 +30,7 @@ function New-Shortcut([string]$path) {
     $sc.TargetPath = $exe
     $sc.WorkingDirectory = $here
     $sc.WindowStyle = 1
-    $sc.Description = "TODO Dashboard — multi-repo TODOs, agents, usage meters"
+    $sc.Description = "TODO Dashboard - multi-repo TODOs, agents, usage meters"
     $ico = Join-Path $here "assets\icon.ico"
     if (Test-Path $ico) { $sc.IconLocation = $ico }
     else { $sc.IconLocation = "$exe,0" }
