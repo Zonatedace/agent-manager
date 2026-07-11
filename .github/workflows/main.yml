@@ -1,0 +1,15 @@
+name: Discord Notify
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: Ilshidur/action-discord@master
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          DISCORD_EMBEDS: |
+            [{"title": "Push to main", "description": "${{ github.event.head_commit.message }}", "url": "${{ github.event.head_commit.url }}", "color": 3066993}]
