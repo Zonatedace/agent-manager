@@ -1,6 +1,6 @@
 # TODO — agent-manager
 
-Local backlog for **Agent Manager** (`C:\Users\Brandon\Desktop\Repos\agent-manager`).  
+Local backlog for **Agent Manager**.  
 Repo: https://github.com/Zonatedace/agent-manager  
 
 Checked items are done; open items are still planned.
@@ -9,12 +9,12 @@ Checked items are done; open items are still planned.
 
 - [x] Rename product from todo-dashboard → **Agent Manager** / `agent-manager`
 - [x] Public GitHub repo `Zonatedace/agent-manager`
-- [x] Local checkout at `Repos\agent-manager` (not `Repos\New folder\…`)
 - [x] Binary `agent-manager.exe`, config `agent-manager.config.json`, log `agent-manager.log`
 - [x] Legacy config migration from `todo-dashboard.config.json`
 - [x] Start Menu / Desktop shortcuts point at current checkout (`install-desktop.ps1`)
 - [x] GitHub link in app chrome header
-- [x] README / ARCHITECTURE / USAGE docs match name + path
+- [x] Paths via `.env` / `AGENT_MANAGER_*` (no personal machine paths in repo)
+- [x] README / ARCHITECTURE / USAGE docs match distributed setup
 - [ ] Embed window icon in exe resources reliably (`winres` + `assets/icon.ico`)
 - [ ] Single-file installer (MSIX / Inno Setup / cargo-packager)
 - [ ] System tray minimize instead of full exit on close

@@ -3,7 +3,6 @@ name = "agent-manager"
 version = "0.1.0"
 edition = "2021"
 description = "Agent Manager - Windows desktop app for multi-repo TODO.md, git, multi-agent sessions, usage meters"
-authors = ["Brandon"]
 repository = "https://github.com/Zonatedace/agent-manager"
 homepage = "https://github.com/Zonatedace/agent-manager"
 readme = "README.md"
@@ -25,7 +24,8 @@ serde_json = "1"
 walkdir = "2"
 regex = "1"
 chrono = { version = "0.4", features = ["serde", "clock"] }
-clap = { version = "4", features = ["derive"] }
+clap = { version = "4", features = ["derive", "env"] }
+dotenvy = "0.15"
 open = "5"
 rayon = "1"
 tracing = "0.1"

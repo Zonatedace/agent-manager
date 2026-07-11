@@ -5,9 +5,8 @@
 | | |
 |--|--|
 | **Repository** | https://github.com/Zonatedace/agent-manager |
-| **Local path** | `C:\Users\Brandon\Desktop\Repos\agent-manager` |
 | **Binary** | `target\release\agent-manager.exe` |
-| **Default scan root** | `C:\Users\Brandon\Desktop\Repos` (configurable) |
+| **Scan root** | Set via `.env` (`AGENT_MANAGER_ROOT`) or `--root` |
 | **Local API** | http://127.0.0.1:7878/ |
 
 Formerly **todo-dashboard**. **Windows desktop app** (WebView2) for multi-repo `TODO.md` management, git actions, in-app multi-agent sessions, and live **Claude / Grok / Codex** usage meters.
@@ -53,12 +52,36 @@ Details: **[docs/USAGE.md](docs/USAGE.md)** · architecture: **[docs/ARCHITECTUR
 - Optional: `claude`, `grok`, `codex` CLIs on `PATH` (agents + usage meters)
 - PowerShell for helper scripts
 
+## Configuration (paths & env)
+
+Local machine paths and secrets never ship in the repo. Copy the example env file and set your scan root:
+
+```powershell
+copy .env.example .env
+# edit .env — set AGENT_MANAGER_ROOT to the folder that contains your repos
+```
+
+| Variable | Purpose | Default |
+|----------|---------|---------|
+| `AGENT_MANAGER_ROOT` | Folder containing project repos | Portable guess (`~/Desktop/Repos`, `~/repos`, …) or cwd |
+| `AGENT_MANAGER_PORT` | Loopback HTTP port | `7878` |
+| `AGENT_MANAGER_CONFIG` | Settings JSON path | `agent-manager.config.json` |
+| `AGENT_MANAGER_LOG_FILE` | Log file path | `agent-manager.log` |
+| `AGENT_MANAGER_LOG_LEVEL` | Log filter | `info` |
+
+**Priority for scan root:** `--force-root` → `--root` / `AGENT_MANAGER_ROOT` → `agent-manager.config.json` → portable default.
+
+`.env`, `agent-manager.config.json`, and log files are **gitignored**.
+
 ## Run (Windows app)
 
 ### Clone / open
 
 ```powershell
-cd C:\Users\Brandon\Desktop\Repos\agent-manager
+git clone https://github.com/Zonatedace/agent-manager.git
+cd agent-manager
+copy .env.example .env
+# set AGENT_MANAGER_ROOT in .env
 ```
 
 ### Install shortcuts (Start Menu + Desktop)
@@ -111,7 +134,7 @@ agent-manager --config agent-manager.config.json
 | GET | `/api/global` | Aggregate stats + open items |
 | GET | `/api/projects` | Project summaries |
 | GET | `/api/projects/{id}` | Project todos + git |
-| GET | `/api/usage` | Claude / Grok / Codex usage windows |
+| GET | `/api/usage` | Claude / Grok / Codex usage |
 | GET/PUT | `/api/settings` | Persistent settings |
 | POST | `/api/todos/toggle` | Check/uncheck TODO line |
 | POST | `/api/refresh` | Re-scan disk |
@@ -131,10 +154,12 @@ agent-manager --config agent-manager.config.json
 ## Project layout
 
 ```text
-Repos\agent-manager\          # this repo (local checkout)
+agent-manager/
   Cargo.toml
   README.md
   TODO.md
+  .env.example                 # template for local paths
+  .env                         # local only (gitignored)
   docs/
     ARCHITECTURE.md
     USAGE.md

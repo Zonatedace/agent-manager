@@ -19,9 +19,10 @@ Thumbs.db
 *.swp
 *~
 
-# Env / secrets
+# Env / secrets (keep .env.example committed)
 .env
 .env.*
+!.env.example
 *.pem
 
 # Legacy names

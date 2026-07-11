@@ -33,19 +33,15 @@ enum RunMode {
 #[command(
     name = "agent-manager",
     about = "Agent Manager — local multi-repo TODO app with agents and usage meters",
-    long_about = "Windows desktop app (WebView2) by default. Use --mode server for headless HTTP only."
+    long_about = "Windows desktop app (WebView2) by default. Use --mode server for headless HTTP only.\n\nPaths: set AGENT_MANAGER_ROOT in .env (see .env.example). CLI flags override env; env overrides config."
 )]
 struct Args {
-    /// Root directory containing project repos
-    #[arg(
-        short,
-        long,
-        default_value = r"C:\Users\Brandon\Desktop\Repos"
-    )]
-    root: PathBuf,
+    /// Root directory containing project repos (env: AGENT_MANAGER_ROOT)
+    #[arg(short, long, env = "AGENT_MANAGER_ROOT")]
+    root: Option<PathBuf>,
 
-    /// HTTP port (loopback only)
-    #[arg(short, long, default_value_t = 7878)]
+    /// HTTP port (loopback only; env: AGENT_MANAGER_PORT)
+    #[arg(short, long, env = "AGENT_MANAGER_PORT", default_value_t = 7878)]
     port: u16,
 
     /// Run mode: app = native window, server = HTTP only
@@ -68,16 +64,20 @@ struct Args {
     #[arg(long, default_value_t = false)]
     no_open: bool,
 
-    /// Log file path
-    #[arg(long, default_value = "agent-manager.log")]
+    /// Log file path (env: AGENT_MANAGER_LOG_FILE)
+    #[arg(long, env = "AGENT_MANAGER_LOG_FILE", default_value = "agent-manager.log")]
     log_file: PathBuf,
 
     /// Log level filter (e.g. info, debug, agent_manager=debug)
-    #[arg(long, default_value = "info")]
+    #[arg(long, env = "AGENT_MANAGER_LOG_LEVEL", default_value = "info")]
     log_level: String,
 
-    /// Path to settings JSON
-    #[arg(long, default_value = "agent-manager.config.json")]
+    /// Path to settings JSON (env: AGENT_MANAGER_CONFIG)
+    #[arg(
+        long,
+        env = "AGENT_MANAGER_CONFIG",
+        default_value = "agent-manager.config.json"
+    )]
     config: PathBuf,
 
     /// Ignore saved config root and force this root
@@ -203,7 +203,50 @@ fn resolve_config_path(configured: PathBuf) -> PathBuf {
     configured
 }
 
+/// Load `.env` before clap so `AGENT_MANAGER_*` vars are available.
+/// Does not override variables already set in the process environment.
+fn load_dotenv() {
+    let mut candidates: Vec<PathBuf> = Vec::new();
+    if let Ok(cwd) = std::env::current_dir() {
+        candidates.push(cwd.join(".env"));
+    }
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            candidates.push(dir.join(".env"));
+            // target/release/agent-manager.exe → repo root
+            if let Some(release_dir) = dir.parent() {
+                if let Some(target_dir) = release_dir.parent() {
+                    candidates.push(target_dir.join(".env"));
+                }
+            }
+        }
+    }
+    for path in candidates {
+        if path.is_file() && dotenvy::from_path(&path).is_ok() {
+            return;
+        }
+    }
+    // Best-effort cwd lookup (no-op if missing)
+    let _ = dotenvy::dotenv();
+}
+
+/// Resolve scan root: --force-root > --root / AGENT_MANAGER_ROOT > config > portable default.
+fn resolve_root(args: &Args, settings: &settings::Settings) -> PathBuf {
+    if let Some(fr) = &args.force_root {
+        return fr.clone();
+    }
+    if let Some(r) = &args.root {
+        return r.clone();
+    }
+    if !settings.root.trim().is_empty() {
+        return PathBuf::from(settings.root.trim());
+    }
+    settings::default_scan_root()
+}
+
 fn main() {
+    load_dotenv();
+
     let mut args = Args::parse();
     if args.server {
         args.mode = RunMode::Server;
@@ -220,16 +263,8 @@ fn main() {
     install_panic_hook();
 
     let mut settings = settings::load(&args.config);
-    if let Some(fr) = args.force_root.clone() {
-        settings.root = fr.to_string_lossy().to_string();
-    } else if settings.root.is_empty() {
-        settings.root = args.root.to_string_lossy().to_string();
-    } else {
-        let default_root = PathBuf::from(r"C:\Users\Brandon\Desktop\Repos");
-        if args.root != default_root && args.root != PathBuf::from(&settings.root) {
-            settings.root = args.root.to_string_lossy().to_string();
-        }
-    }
+    let root = resolve_root(&args, &settings);
+    settings.root = root.to_string_lossy().to_string();
     settings.normalize();
 
     let open_browser = args.open && !args.no_open && settings.open_browser_on_start;

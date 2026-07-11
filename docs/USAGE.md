@@ -4,7 +4,7 @@ Agent Manager’s header shows live **Claude**, **Grok**, and **Codex** usage. E
 
 | | |
 |--|--|
-| **App** | Agent Manager (`Repos\agent-manager`) |
+| **App** | Agent Manager |
 | **Endpoint** | `GET http://127.0.0.1:7878/api/usage` |
 | **UI poll** | Every **60s** (client); server caches longer per provider |
 | **Timers** | Tick every **1s** from `resets_at` between polls |

@@ -300,16 +300,16 @@ mod tests {
     #[test]
     fn converts_ssh_remote() {
         assert_eq!(
-            remote_to_web_url("git@github.com:Zonatedace/k3s.git").as_deref(),
-            Some("https://github.com/Zonatedace/k3s")
+            remote_to_web_url("git@github.com:example/my-repo.git").as_deref(),
+            Some("https://github.com/example/my-repo")
         );
     }
 
     #[test]
     fn converts_https_remote() {
         assert_eq!(
-            remote_to_web_url("https://github.com/Zonatedace/AgentScheduler.git").as_deref(),
-            Some("https://github.com/Zonatedace/AgentScheduler")
+            remote_to_web_url("https://github.com/example/my-app.git").as_deref(),
+            Some("https://github.com/example/my-app")
         );
     }
 

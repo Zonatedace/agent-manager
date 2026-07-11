@@ -3,8 +3,6 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use tracing::{info, warn};
 
-const DEFAULT_ROOT: &str = r"C:\Users\Brandon\Desktop\Repos";
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Settings {
     /// Root folder containing project repos
@@ -57,7 +55,8 @@ fn default_item_status() -> String {
 impl Default for Settings {
     fn default() -> Self {
         Self {
-            root: DEFAULT_ROOT.into(),
+            // Empty until resolved from CLI / .env / portable default at startup
+            root: String::new(),
             default_cli: default_cli(),
             default_model: String::new(),
             default_effort: String::new(),
@@ -70,6 +69,37 @@ impl Default for Settings {
             default_agent_cwd: String::new(),
         }
     }
+}
+
+/// User home directory (`USERPROFILE` on Windows, `HOME` elsewhere).
+pub fn home_dir() -> Option<PathBuf> {
+    std::env::var_os("USERPROFILE")
+        .or_else(|| std::env::var_os("HOME"))
+        .map(PathBuf::from)
+}
+
+/// Portable default scan root when no CLI / env / config root is set.
+/// Prefers common repo parent folders under the home directory, then cwd.
+pub fn default_scan_root() -> PathBuf {
+    if let Some(home) = home_dir() {
+        let candidates = [
+            home.join("Desktop").join("Repos"),
+            home.join("Desktop").join("repos"),
+            home.join("repos"),
+            home.join("Projects"),
+            home.join("projects"),
+            home.join("dev"),
+            home.join("code"),
+            home.join("src"),
+        ];
+        for p in candidates {
+            if p.is_dir() {
+                return p;
+            }
+        }
+        return home;
+    }
+    std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
 }
 
 impl Settings {

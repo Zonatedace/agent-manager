@@ -5,9 +5,9 @@ Local **Rust** process: native Windows window (WebView2) + **Axum** JSON API on 
 | | |
 |--|--|
 | **Repo** | https://github.com/Zonatedace/agent-manager |
-| **Checkout** | `C:\Users\Brandon\Desktop\Repos\agent-manager` |
 | **Binary** | `target\release\agent-manager.exe` |
 | **API** | `http://127.0.0.1:7878/` |
+| **Paths** | `.env` (`AGENT_MANAGER_ROOT`, …) — see `.env.example` |
 
 ## Runtime
 
@@ -38,8 +38,18 @@ Same Axum stack without a window; optional external browser via `open`.
 |----------|-------------|
 | UI | `static/index.html` embedded via `include_str!` (rebuild after HTML edits) |
 | API | `src/server.rs` |
+| Env | `.env` / `AGENT_MANAGER_*` (see `.env.example`) |
 | Config | `agent-manager.config.json` (legacy `todo-dashboard.config.json` migrated if needed) |
 | Logs | `agent-manager.log` |
+
+### Configuration priority
+
+Scan root resolution:
+
+1. `--force-root`
+2. `--root` or `AGENT_MANAGER_ROOT` (from process env or `.env`)
+3. `root` in `agent-manager.config.json`
+4. Portable default (`~/Desktop/Repos`, `~/repos`, home, or cwd)
 
 ### Dev process management (Windows)
 
@@ -57,7 +67,7 @@ Production intent for headless: container / k8s using **server mode** (not Task 
 
 | Module | Responsibility |
 |--------|----------------|
-| `main.rs` | CLI, logging, boot (app vs server), config path migration |
+| `main.rs` | CLI, dotenv, logging, boot (app vs server), config path migration |
 | `desktop.rs` | Windows WebView2 window (tao/wry) |
 | `server.rs` | HTTP routes, health, wiring |
 | `scanner.rs` / `parser.rs` / `todos.rs` | Discover and parse/write TODO markdown |
@@ -66,7 +76,7 @@ Production intent for headless: container / k8s using **server mode** (not Task 
 | `agents.rs` | Discover CLIs; external agent launch (detached on Windows) |
 | `sessions.rs` | In-app multi-turn sessions, SSE, orchestrator/sub-agents |
 | `usage.rs` | Live Claude / Grok / Codex quota meters |
-| `settings.rs` | Persistent settings |
+| `settings.rs` | Persistent settings + portable default root |
 | `fsbrowser.rs` | Directory listing for project browser |
 
 ## Sessions (high level)
@@ -89,11 +99,15 @@ Blocking collectors in `usage.rs` run under `spawn_blocking` for `GET /api/usage
 - Binds to localhost by default; treat as a local-dev tool.
 - Usage and agent start use **your** existing CLI logins — do not expose the port publicly without auth.
 - Never log full OAuth tokens; usage responses omit secrets.
+- Do not commit `.env`, config JSON with local paths, or credential files.
 
 ## Build
 
 ```powershell
-cd C:\Users\Brandon\Desktop\Repos\agent-manager
+git clone https://github.com/Zonatedace/agent-manager.git
+cd agent-manager
+copy .env.example .env
+# set AGENT_MANAGER_ROOT
 cargo build --release
 # binary: target\release\agent-manager.exe
 ```
