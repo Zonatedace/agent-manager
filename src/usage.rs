@@ -1,6 +1,7 @@
 //! Live usage / quota meters for Claude, Grok, and Codex.
 //!
-//! Human-facing reference: `docs/USAGE.md`. Backlog: root `TODO.md`.
+//! Human-facing reference: `docs/USAGE.md`.
+//! Product backlog: root `TODO.md` (Agent Manager / `Repos\agent-manager`).
 //!
 //! Researched against installed CLIs (2026-07-11):
 //! - Claude Code 2.1.137 → GET api.anthropic.com/api/oauth/usage

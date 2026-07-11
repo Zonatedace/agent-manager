@@ -1,12 +1,13 @@
 # Agent usage meters
 
-The dashboard header shows live **Claude**, **Grok**, and **Codex** usage. Each card can show multiple **windows** (soft vs hard limits) with fill bars, used %, and a **live reset countdown**.
+Agent Manager’s header shows live **Claude**, **Grok**, and **Codex** usage. Each card can show multiple **windows** (soft vs hard limits) with fill bars, used %, and a **live reset countdown**.
 
-Data is served by:
-
-```http
-GET /api/usage
-```
+| | |
+|--|--|
+| **App** | Agent Manager (`Repos\agent-manager`) |
+| **Endpoint** | `GET http://127.0.0.1:7878/api/usage` |
+| **UI poll** | Every **60s** (client); server caches longer per provider |
+| **Timers** | Tick every **1s** from `resets_at` between polls |
 
 Tokens never leave the machine in the JSON response (only plan labels, percents, and timers). Credentials are read from local CLI auth files.
 
@@ -77,7 +78,7 @@ Session is the short rolling gate; weekly is the longer plan pool. Both apply.
 
 ### Rate limits (429)
 
-Anthropic rate-limits `/api/oauth/usage` if polled too often. The dashboard:
+Anthropic rate-limits `/api/oauth/usage` if polled too often. Agent Manager:
 
 - Caches a successful Claude reading for **≥ 120s**
 - On **429**, backs off (~5 minutes or `Retry-After`) and serves **stale** bars when available
@@ -162,7 +163,7 @@ Also exposed when present:
 ## Local verification
 
 ```powershell
-# After dashboard is up on :7878
+# After Agent Manager is up on :7878
 Invoke-RestMethod http://127.0.0.1:7878/api/usage |
   Select-Object -ExpandProperty meters |
   ForEach-Object {
@@ -176,7 +177,7 @@ Invoke-RestMethod http://127.0.0.1:7878/api/usage |
 Optional direct probes (requires local tokens; do not commit output):
 
 ```powershell
-# Grok weekly + monthly
+# Grok weekly + monthly via cli-chat-proxy
 # Claude: api.anthropic.com/api/oauth/usage
 # Codex: chatgpt.com/backend-api/wham/usage
 ```

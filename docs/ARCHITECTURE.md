@@ -1,6 +1,13 @@
-# Architecture
+# Architecture — Agent Manager
 
-Local **Rust / Axum** process serving a single-page dashboard and JSON APIs. No cloud backend of its own — it reads your repos and local agent credentials on disk.
+Local **Rust** process: native Windows window (WebView2) + **Axum** JSON API on loopback. No cloud backend of its own — it scans your repos and reads local agent credentials.
+
+| | |
+|--|--|
+| **Repo** | https://github.com/Zonatedace/agent-manager |
+| **Checkout** | `C:\Users\Brandon\Desktop\Repos\agent-manager` |
+| **Binary** | `target\release\agent-manager.exe` |
+| **API** | `http://127.0.0.1:7878/` |
 
 ## Runtime
 
@@ -8,7 +15,7 @@ Local **Rust / Axum** process serving a single-page dashboard and JSON APIs. No 
 
 ```text
 ┌─────────────────────────────────────┐
-│  agent-manager.exe                 │
+│  agent-manager.exe                  │
 │  ┌──────────────┐   ┌─────────────┐ │
 │  │ WebView2     │──►│ Axum :7878  │ │
 │  │ (tao + wry)  │   │ loopback    │ │
@@ -21,33 +28,36 @@ Local **Rust / Axum** process serving a single-page dashboard and JSON APIs. No 
 - Main thread: native window (`src/desktop.rs`, WebView2).
 - Background Tokio runtime: HTTP API + sessions.
 - Closing the window exits the process.
-- Release builds use `windows_subsystem = "windows"` (no console); logs still go to `agent-manager.log`.
+- Release builds use `windows_subsystem = "windows"` (no console); logs go to `agent-manager.log`.
 
 ### Server mode (`--mode server`)
 
 Same Axum stack without a window; optional external browser via `open`.
 
-- **UI**: `static/index.html` embedded at compile time (`include_str!`). Rebuild after HTML changes.
-- **API**: Axum routes in `src/server.rs`.
-- **Config**: `agent-manager.config.json` (settings API) + CLI flags (`--root`, `--port`, …).
-- **Logs**: `agent-manager.log`.
+| Artifact | Path / note |
+|----------|-------------|
+| UI | `static/index.html` embedded via `include_str!` (rebuild after HTML edits) |
+| API | `src/server.rs` |
+| Config | `agent-manager.config.json` (legacy `todo-dashboard.config.json` migrated if needed) |
+| Logs | `agent-manager.log` |
 
 ### Dev process management (Windows)
 
 | Script | Purpose |
 |--------|---------|
-| `run.ps1` | Foreground rebuild/run (Ctrl+C stops) |
-| `restart.ps1` | Stop existing process, optional `cargo build --release`, start detached via WMI |
+| `run.ps1` | Build if needed; launch desktop window (or `--server`) |
+| `restart.ps1` | Stop process, optional release build, start detached (WMI) |
 | `ensure-running.ps1` | Health-check and start if down |
-| `install-autostart.ps1` | **Deprecated** — user prefers no Task Scheduler for this app |
+| `install-desktop.ps1` | Start Menu + Desktop shortcuts → this checkout’s exe |
+| `install-autostart.ps1` | **Deprecated** — no Task Scheduler for this app |
 
-Prod intent: container / k8s (not Task Scheduler). See open items in `TODO.md`.
+Production intent for headless: container / k8s using **server mode** (not Task Scheduler). See `TODO.md`.
 
 ## Modules (`src/`)
 
 | Module | Responsibility |
 |--------|----------------|
-| `main.rs` | CLI, logging, boot (app vs server) |
+| `main.rs` | CLI, logging, boot (app vs server), config path migration |
 | `desktop.rs` | Windows WebView2 window (tao/wry) |
 | `server.rs` | HTTP routes, health, wiring |
 | `scanner.rs` / `parser.rs` / `todos.rs` | Discover and parse/write TODO markdown |
@@ -77,12 +87,13 @@ Blocking collectors in `usage.rs` run under `spawn_blocking` for `GET /api/usage
 ## Security notes
 
 - Binds to localhost by default; treat as a local-dev tool.
-- Usage and agent start use **your** existing CLI logins — do not expose the port on a public interface without auth.
+- Usage and agent start use **your** existing CLI logins — do not expose the port publicly without auth.
 - Never log full OAuth tokens; usage responses omit secrets.
 
 ## Build
 
 ```powershell
+cd C:\Users\Brandon\Desktop\Repos\agent-manager
 cargo build --release
 # binary: target\release\agent-manager.exe
 ```

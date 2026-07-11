@@ -1,6 +1,24 @@
 # TODO — agent-manager
 
-Local backlog for the Agent Manager. Checked items are done; open items are still planned.
+Local backlog for **Agent Manager** (`C:\Users\Brandon\Desktop\Repos\agent-manager`).  
+Repo: https://github.com/Zonatedace/agent-manager  
+
+Checked items are done; open items are still planned.
+
+## Project identity & packaging
+
+- [x] Rename product from todo-dashboard → **Agent Manager** / `agent-manager`
+- [x] Public GitHub repo `Zonatedace/agent-manager`
+- [x] Local checkout at `Repos\agent-manager` (not `Repos\New folder\…`)
+- [x] Binary `agent-manager.exe`, config `agent-manager.config.json`, log `agent-manager.log`
+- [x] Legacy config migration from `todo-dashboard.config.json`
+- [x] Start Menu / Desktop shortcuts point at current checkout (`install-desktop.ps1`)
+- [x] GitHub link in app chrome header
+- [x] README / ARCHITECTURE / USAGE docs match name + path
+- [ ] Embed window icon in exe resources reliably (`winres` + `assets/icon.ico`)
+- [ ] Single-file installer (MSIX / Inno Setup / cargo-packager)
+- [ ] System tray minimize instead of full exit on close
+- [ ] Optional “Open data folder” action (config + logs directory)
 
 ## Usage meters (Claude / Grok / Codex)
 
@@ -27,8 +45,9 @@ Local backlog for the Agent Manager. Checked items are done; open items are stil
 - [ ] Session history search / filter by project and agent
 - [ ] Resume external CLI sessions by id when supported
 - [ ] Per-session token/cost estimate when provider reports usage on the turn
+- [ ] Document orchestrator UX in `docs/SESSIONS.md`
 
-## Dashboard core
+## Core product
 
 - [x] Global + per-project TODO views
 - [x] Checkbox write-back to `TODO.md`
@@ -37,27 +56,24 @@ Local backlog for the Agent Manager. Checked items are done; open items are stil
 - [x] Filesystem browser for project context
 - [x] Dev runners: `run.ps1`, `restart.ps1`, `ensure-running.ps1` (no Task Scheduler)
 - [x] Windows desktop app (WebView2 via tao/wry; `--mode server` for headless)
-- [x] Start Menu / Desktop shortcuts (`install-desktop.ps1`)
-- [ ] Embed custom window icon in exe resources reliably (winres + assets/icon.ico)
-- [ ] Single-file installer (MSIX / Inno Setup / cargo-packager)
-- [ ] System tray minimize instead of full exit
 - [ ] Container / k8s deployment manifests (server mode)
-- [ ] Health banner auto-restart option (opt-in, still no Task Scheduler unless user chooses)
+- [ ] Health banner auto-restart option (opt-in; still no Task Scheduler unless user chooses)
 - [ ] Export / print filtered TODO list
 - [ ] Dark/light theme toggle
 
 ## Reliability
 
-- [x] Detached agent spawn so starting an agent does not kill the dashboard process
+- [x] Detached agent spawn so starting an agent does not kill the app process
 - [x] Panic catch on HTTP layer + logging to `agent-manager.log`
-- [ ] Graceful shutdown + drain active sessions
+- [ ] Graceful shutdown + drain active sessions on window close
 - [ ] Integration smoke test script (`ensure-running` + `/api/health` + `/api/usage`)
+- [ ] After folder moves: document re-running `install-desktop.ps1` so shortcuts stay valid
 
 ## Docs
 
-- [x] README feature/API overview
+- [x] README feature/API overview (name, path, binary, GitHub)
 - [x] `docs/USAGE.md` — agent usage meters
 - [x] `docs/ARCHITECTURE.md` — layout and runtime notes
-- [x] This `TODO.md` backlog
+- [x] This `TODO.md` backlog (aligned with Agent Manager)
 - [ ] Short `docs/SESSIONS.md` for orchestrator / multi-agent UX
-- [ ] Changelog / release notes when packaging for k8s
+- [ ] `CHANGELOG.md` for releases / packaging

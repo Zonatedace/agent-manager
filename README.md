@@ -2,11 +2,15 @@
 
 [![GitHub](https://img.shields.io/badge/GitHub-Zonatedace%2Fagent--manager-181717?logo=github)](https://github.com/Zonatedace/agent-manager)
 
-**Repository:** https://github.com/Zonatedace/agent-manager
+| | |
+|--|--|
+| **Repository** | https://github.com/Zonatedace/agent-manager |
+| **Local path** | `C:\Users\Brandon\Desktop\Repos\agent-manager` |
+| **Binary** | `target\release\agent-manager.exe` |
+| **Default scan root** | `C:\Users\Brandon\Desktop\Repos` (configurable) |
+| **Local API** | http://127.0.0.1:7878/ |
 
-Formerly **todo-dashboard**. **Windows desktop app** (native window via WebView2) for `TODO.md` across your repos: global and per-project views, git actions, in-app multi-agent sessions, and live **Claude / Grok / Codex** usage meters.
-
-Default scan root: your projects folder (configurable). The UI runs in an OS window; a local HTTP API still listens on `http://127.0.0.1:7878/` for health checks and tooling.
+Formerly **todo-dashboard**. **Windows desktop app** (WebView2) for multi-repo `TODO.md` management, git actions, in-app multi-agent sessions, and live **Claude / Grok / Codex** usage meters.
 
 ## Features
 
@@ -30,11 +34,11 @@ When a project is in a git worktree:
 - **External launch**: Grok / Claude / Codex in the project directory (model, effort, permissions, interactive or headless)
 - **In-app sessions**: concurrent background runs, live SSE transcript, chat, orchestrator + sub-agents
 - Stream parsing for Grok `streaming-json` (assistant text, not raw thought dumps)
-- Detached spawn on Windows so agent start does not kill the dashboard process
+- Detached spawn on Windows so agent start does not kill the app process
 
 ### Usage meters
 
-Sticky header meters for **Claude**, **Grok**, and **Codex**:
+Header meters for **Claude**, **Grok**, and **Codex**:
 
 - Soft + hard windows (e.g. 5h + weekly, weekly credits + monthly spend)
 - Live **reset countdown** on every window
@@ -51,14 +55,19 @@ Details: **[docs/USAGE.md](docs/USAGE.md)** · architecture: **[docs/ARCHITECTUR
 
 ## Run (Windows app)
 
+### Clone / open
+
+```powershell
+cd C:\Users\Brandon\Desktop\Repos\agent-manager
+```
+
 ### Install shortcuts (Start Menu + Desktop)
 
 ```powershell
-cd agent-manager
 .\install-desktop.ps1
 ```
 
-Then launch **Agent Manager** from the Start Menu or Desktop. Closes when you close the window.
+Then launch **Agent Manager** from the Start Menu or Desktop. Closing the window stops the app.
 
 ### Dev / rebuild
 
@@ -66,18 +75,17 @@ Then launch **Agent Manager** from the Start Menu or Desktop. Closes when you cl
 .\run.ps1                 # build if needed, open desktop window
 .\restart.ps1             # rebuild + restart detached
 .\restart.ps1 --no-build
+.\ensure-running.ps1      # start only if /api/health is down
 cargo run --release       # desktop window (default on Windows)
 ```
 
 ### Server-only mode (no window)
 
-Useful for scripting, remote access over loopback, or containers later:
-
 ```powershell
 .\run.ps1 --server
 # or
-agent-manager.exe --mode server
-agent-manager.exe --mode server --no-open
+.\target\release\agent-manager.exe --mode server
+.\target\release\agent-manager.exe --mode server --no-open
 ```
 
 ### CLI options
@@ -89,10 +97,11 @@ agent-manager --server                # alias for --mode server
 agent-manager --console               # attach console on GUI builds
 agent-manager --root "D:\Repos" --port 7878
 agent-manager --log-file agent-manager.log --log-level info
+agent-manager --config agent-manager.config.json
 ```
 
 > After editing `static/index.html`, rebuild — the UI is embedded in the binary.
-> Logs always go to `agent-manager.log` (GUI builds hide the console unless `--console`).
+> Logs: `agent-manager.log`. Config: `agent-manager.config.json` (legacy `todo-dashboard.config.json` is migrated if present).
 
 ## API (selected)
 
@@ -122,22 +131,22 @@ agent-manager --log-file agent-manager.log --log-level info
 ## Project layout
 
 ```text
-agent-manager/
+Repos\agent-manager\          # this repo (local checkout)
   Cargo.toml
   README.md
-  TODO.md                 # backlog (this repo)
+  TODO.md
   docs/
     ARCHITECTURE.md
-    USAGE.md              # usage meters deep-dive
+    USAGE.md
+  assets/
+    icon.ico
   src/
-    main.rs
-    server.rs
-    usage.rs              # agent quota collectors
-    sessions.rs           # multi-agent sessions
-    agents.rs scanner.rs parser.rs todos.rs git.rs …
+    main.rs desktop.rs server.rs usage.rs sessions.rs …
   static/
-    index.html            # UI (embedded at build)
-  run.ps1 restart.ps1 ensure-running.ps1
+    index.html                 # UI (embedded at build)
+  run.ps1 restart.ps1 ensure-running.ps1 install-desktop.ps1
+  agent-manager.config.json    # local (gitignored)
+  agent-manager.log            # local (gitignored)
 ```
 
 ## Keyboard (UI)
@@ -155,4 +164,4 @@ Local-dev tool: binds to loopback, uses your existing agent logins on disk. Do n
 
 ## License
 
-Private / local use unless noted otherwise.
+MIT (see repository); local credentials and config stay on your machine.
