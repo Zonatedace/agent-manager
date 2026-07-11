@@ -1,0 +1,3436 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>TODO Dashboard</title>
+  <style>
+    :root {
+      --bg: #0c0f14;
+      --bg-elevated: #12161e;
+      --bg-card: #161b24;
+      --bg-hover: #1c2330;
+      --border: #252d3a;
+      --border-soft: #1e2532;
+      --text: #e8edf5;
+      --text-muted: #8b97ab;
+      --text-dim: #5c6a80;
+      --accent: #5b9dff;
+      --accent-soft: rgba(91, 157, 255, 0.12);
+      --accent-strong: #3d86f5;
+      --open: #f5a524;
+      --open-soft: rgba(245, 165, 36, 0.14);
+      --done: #3ecf8e;
+      --done-soft: rgba(62, 207, 142, 0.12);
+      --danger: #f07178;
+      --git: #a78bfa;
+      --git-soft: rgba(167, 139, 250, 0.14);
+      --dirty: #f07178;
+      --radius: 12px;
+      --radius-sm: 8px;
+      --shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+      --sidebar-w: 280px;
+      --font: "Segoe UI", system-ui, -apple-system, sans-serif;
+      --mono: "Cascadia Code", "Consolas", ui-monospace, monospace;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      line-height: 1.5;
+      background-image:
+        radial-gradient(ellipse 80% 50% at 10% -10%, rgba(91, 157, 255, 0.08), transparent),
+        radial-gradient(ellipse 60% 40% at 90% 0%, rgba(62, 207, 142, 0.05), transparent);
+    }
+
+    /* Layout */
+    .app {
+      display: grid;
+      grid-template-columns: var(--sidebar-w) 1fr;
+      min-height: 100vh;
+    }
+
+    @media (max-width: 860px) {
+      .app { grid-template-columns: 1fr; }
+      .sidebar {
+        position: fixed;
+        inset: 0 auto 0 0;
+        width: min(var(--sidebar-w), 88vw);
+        z-index: 50;
+        transform: translateX(-100%);
+        transition: transform 0.2s ease;
+        box-shadow: var(--shadow);
+      }
+      .sidebar.open { transform: translateX(0); }
+      .backdrop {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,0.5);
+        z-index: 40;
+      }
+      .backdrop.show { display: block; }
+    }
+
+    /* Sidebar */
+    .sidebar {
+      background: var(--bg-elevated);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      position: sticky;
+      top: 0;
+    }
+
+    .sidebar-header {
+      padding: 1.25rem 1.1rem 0.85rem;
+      border-bottom: 1px solid var(--border-soft);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 0.65rem;
+      margin-bottom: 1rem;
+    }
+
+    .brand-mark {
+      width: 34px;
+      height: 34px;
+      border-radius: 9px;
+      background: linear-gradient(135deg, var(--accent), #7c6af5);
+      display: grid;
+      place-items: center;
+      font-weight: 700;
+      font-size: 0.85rem;
+      box-shadow: 0 4px 14px rgba(91, 157, 255, 0.35);
+    }
+
+    .brand h1 {
+      font-size: 1rem;
+      font-weight: 650;
+      letter-spacing: -0.02em;
+    }
+
+    .brand span {
+      display: block;
+      font-size: 0.72rem;
+      color: var(--text-muted);
+      font-weight: 400;
+    }
+
+    .search-wrap { position: relative; }
+    .search-wrap svg {
+      position: absolute;
+      left: 0.7rem;
+      top: 50%;
+      transform: translateY(-50%);
+      opacity: 0.45;
+      pointer-events: none;
+    }
+    #projectSearch {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: var(--radius-sm);
+      padding: 0.55rem 0.7rem 0.55rem 2.1rem;
+      font-size: 0.85rem;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    #projectSearch:focus { border-color: var(--accent); }
+
+    .view-toggle {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.35rem;
+      margin-top: 0.85rem;
+      background: var(--bg);
+      padding: 0.25rem;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border-soft);
+    }
+    .view-toggle button {
+      border: none;
+      background: transparent;
+      color: var(--text-muted);
+      font-size: 0.78rem;
+      font-weight: 600;
+      padding: 0.45rem;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .view-toggle button.active {
+      background: var(--accent-soft);
+      color: var(--accent);
+    }
+    .view-toggle button:hover:not(.active) { color: var(--text); }
+
+    .project-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 0.65rem 0.55rem;
+    }
+
+    .project-item {
+      display: flex;
+      align-items: center;
+      gap: 0.55rem;
+      width: 100%;
+      text-align: left;
+      background: transparent;
+      border: 1px solid transparent;
+      color: var(--text);
+      padding: 0.55rem 0.65rem;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      font-size: 0.86rem;
+      transition: background 0.12s, border-color 0.12s;
+      margin-bottom: 2px;
+    }
+    .project-item:hover { background: var(--bg-hover); }
+    .project-item.active {
+      background: var(--accent-soft);
+      border-color: rgba(91, 157, 255, 0.25);
+      color: var(--accent);
+    }
+    .project-item .name {
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-weight: 500;
+    }
+    .project-item .badge {
+      font-size: 0.72rem;
+      font-weight: 650;
+      font-variant-numeric: tabular-nums;
+      background: var(--open-soft);
+      color: var(--open);
+      padding: 0.12rem 0.45rem;
+      border-radius: 999px;
+      min-width: 1.6rem;
+      text-align: center;
+    }
+    .project-item .badge.zero {
+      background: var(--done-soft);
+      color: var(--done);
+    }
+    .project-item .id-hint {
+      display: none;
+      font-size: 0.68rem;
+      color: var(--text-dim);
+    }
+    .project-item:hover .id-hint { display: block; }
+
+    .sidebar-footer {
+      padding: 0.85rem 1rem;
+      border-top: 1px solid var(--border-soft);
+      font-size: 0.72rem;
+      color: var(--text-dim);
+    }
+
+    /* Main */
+    .main {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      min-height: 100vh;
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      padding: 1.1rem 1.5rem;
+      border-bottom: 1px solid var(--border-soft);
+      background: rgba(12, 15, 20, 0.75);
+      backdrop-filter: blur(12px);
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    .menu-btn {
+      display: none;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      color: var(--text);
+      width: 38px;
+      height: 38px;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      font-size: 1.1rem;
+    }
+    @media (max-width: 860px) { .menu-btn { display: grid; place-items: center; } }
+
+    .topbar-title { flex: 1; min-width: 0; }
+    .topbar-title h2 {
+      font-size: 1.2rem;
+      font-weight: 650;
+      letter-spacing: -0.02em;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .topbar-title p {
+      font-size: 0.78rem;
+      color: var(--text-muted);
+    }
+
+    .actions { display: flex; gap: 0.5rem; flex-shrink: 0; }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 0.5rem 0.85rem;
+      border-radius: var(--radius-sm);
+      font-size: 0.82rem;
+      font-weight: 550;
+      cursor: pointer;
+      transition: background 0.12s, border-color 0.12s;
+    }
+    .btn:hover { background: var(--bg-hover); border-color: #334; }
+    .btn.primary {
+      background: var(--accent);
+      border-color: var(--accent-strong);
+      color: #fff;
+    }
+    .btn.primary:hover { background: var(--accent-strong); }
+    .btn:disabled { opacity: 0.5; cursor: wait; }
+    .btn .spin { animation: spin 0.8s linear infinite; display: inline-block; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .content {
+      padding: 1.25rem 1.5rem 2.5rem;
+      flex: 1;
+    }
+
+    /* Stats */
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 0.75rem;
+      margin-bottom: 1.25rem;
+    }
+    .stat-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-soft);
+      border-radius: var(--radius);
+      padding: 0.95rem 1.05rem;
+    }
+    .stat-card .label {
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-muted);
+      font-weight: 600;
+      margin-bottom: 0.25rem;
+    }
+    .stat-card .value {
+      font-size: 1.65rem;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      font-variant-numeric: tabular-nums;
+    }
+    .stat-card.open .value { color: var(--open); }
+    .stat-card.done .value { color: var(--done); }
+    .stat-card.projects .value { color: var(--accent); }
+
+    .progress-bar {
+      height: 6px;
+      background: var(--border-soft);
+      border-radius: 999px;
+      overflow: hidden;
+      margin-top: 0.65rem;
+    }
+    .progress-bar > span {
+      display: block;
+      height: 100%;
+      background: linear-gradient(90deg, var(--done), #2db87a);
+      border-radius: 999px;
+      transition: width 0.35s ease;
+    }
+
+    /* Filters row */
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.6rem;
+      align-items: center;
+      margin-bottom: 1rem;
+    }
+    .toolbar .spacer { flex: 1; }
+    .filter-chip {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      padding: 0.35rem 0.7rem;
+      border-radius: 999px;
+      font-size: 0.78rem;
+      font-weight: 550;
+      cursor: pointer;
+    }
+    .filter-chip.active {
+      background: var(--accent-soft);
+      border-color: rgba(91, 157, 255, 0.3);
+      color: var(--accent);
+    }
+    #itemSearch {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: var(--radius-sm);
+      padding: 0.45rem 0.75rem;
+      font-size: 0.84rem;
+      min-width: 200px;
+      outline: none;
+    }
+    #itemSearch:focus { border-color: var(--accent); }
+
+    /* Cards / list */
+    .section-label {
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: var(--text-dim);
+      font-weight: 650;
+      margin: 1.25rem 0 0.55rem;
+    }
+
+    .todo-list { display: flex; flex-direction: column; gap: 0.4rem; }
+
+    .todo-item {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      gap: 0.75rem;
+      align-items: start;
+      background: var(--bg-card);
+      border: 1px solid var(--border-soft);
+      border-radius: var(--radius);
+      padding: 0.8rem 0.95rem;
+      transition: border-color 0.12s, background 0.12s;
+    }
+    .todo-item:hover {
+      border-color: var(--border);
+      background: var(--bg-hover);
+    }
+    .todo-item.done {
+      opacity: 0.55;
+    }
+    .todo-item.done .todo-text {
+      text-decoration: line-through;
+      color: var(--text-muted);
+    }
+
+    .check {
+      width: 18px;
+      height: 18px;
+      border-radius: 5px;
+      border: 2px solid var(--text-dim);
+      margin-top: 2px;
+      flex-shrink: 0;
+      display: grid;
+      place-items: center;
+    }
+    .todo-item.done .check {
+      background: var(--done);
+      border-color: var(--done);
+    }
+    .todo-item.done .check::after {
+      content: "✓";
+      color: #0c0f14;
+      font-size: 0.7rem;
+      font-weight: 800;
+    }
+    .todo-item:not(.done) .check {
+      border-color: var(--open);
+    }
+
+    .todo-text {
+      font-size: 0.9rem;
+      word-break: break-word;
+    }
+    .todo-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.4rem;
+      margin-top: 0.35rem;
+    }
+    .pill {
+      font-size: 0.7rem;
+      font-weight: 550;
+      padding: 0.12rem 0.45rem;
+      border-radius: 999px;
+      background: var(--bg);
+      color: var(--text-muted);
+      border: 1px solid var(--border-soft);
+      font-family: var(--mono);
+    }
+    .pill.project {
+      background: var(--accent-soft);
+      color: var(--accent);
+      border-color: transparent;
+      cursor: pointer;
+      font-family: var(--font);
+    }
+    .pill.project:hover { filter: brightness(1.15); }
+    .pill.section {
+      background: transparent;
+      color: var(--text-dim);
+      border-color: var(--border);
+      font-family: var(--font);
+    }
+
+    .line-num {
+      font-size: 0.72rem;
+      color: var(--text-dim);
+      font-family: var(--mono);
+      padding-top: 3px;
+    }
+
+    /* Project grid (global overview) */
+    .project-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+      gap: 0.75rem;
+      margin-bottom: 0.5rem;
+    }
+    .proj-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-soft);
+      border-radius: var(--radius);
+      padding: 1rem;
+      cursor: pointer;
+      text-align: left;
+      color: inherit;
+      width: 100%;
+      transition: border-color 0.15s, transform 0.12s, background 0.12s;
+    }
+    .proj-card:hover {
+      border-color: rgba(91, 157, 255, 0.35);
+      background: var(--bg-hover);
+      transform: translateY(-1px);
+    }
+    .proj-card h3 {
+      font-size: 0.95rem;
+      font-weight: 650;
+      margin-bottom: 0.55rem;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .proj-card .counts {
+      display: flex;
+      gap: 0.75rem;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      font-variant-numeric: tabular-nums;
+    }
+    .proj-card .counts strong.open { color: var(--open); }
+    .proj-card .counts strong.done { color: var(--done); }
+    .proj-card .mini-bar {
+      height: 4px;
+      background: var(--border-soft);
+      border-radius: 999px;
+      margin-top: 0.7rem;
+      overflow: hidden;
+    }
+    .proj-card .mini-bar > span {
+      display: block;
+      height: 100%;
+      background: var(--done);
+    }
+
+    .empty {
+      text-align: center;
+      padding: 3rem 1rem;
+      color: var(--text-muted);
+    }
+    .empty h3 { color: var(--text); margin-bottom: 0.4rem; }
+
+    .loading {
+      display: grid;
+      place-items: center;
+      min-height: 40vh;
+      color: var(--text-muted);
+    }
+
+    .error {
+      background: rgba(240, 113, 120, 0.1);
+      border: 1px solid rgba(240, 113, 120, 0.35);
+      color: var(--danger);
+      padding: 0.85rem 1rem;
+      border-radius: var(--radius-sm);
+      margin-bottom: 1rem;
+      font-size: 0.88rem;
+    }
+
+    .kb-hint {
+      font-size: 0.72rem;
+      color: var(--text-dim);
+    }
+    kbd {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 0.05rem 0.35rem;
+      font-family: var(--mono);
+      font-size: 0.7rem;
+    }
+
+    /* Git panel */
+    .git-panel {
+      background: var(--bg-card);
+      border: 1px solid var(--border-soft);
+      border-radius: var(--radius);
+      padding: 1rem 1.1rem;
+      margin-bottom: 1.1rem;
+    }
+    .git-panel-header {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.5rem 0.75rem;
+      margin-bottom: 0.75rem;
+    }
+    .git-panel-header .git-label {
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: var(--git);
+      font-weight: 700;
+    }
+    .git-branch {
+      font-family: var(--mono);
+      font-size: 0.84rem;
+      font-weight: 600;
+      color: var(--text);
+      background: var(--git-soft);
+      padding: 0.2rem 0.55rem;
+      border-radius: 6px;
+    }
+    .git-badge {
+      font-size: 0.72rem;
+      font-weight: 650;
+      padding: 0.15rem 0.5rem;
+      border-radius: 999px;
+      border: 1px solid transparent;
+    }
+    .git-badge.clean {
+      background: var(--done-soft);
+      color: var(--done);
+    }
+    .git-badge.dirty {
+      background: rgba(240, 113, 120, 0.12);
+      color: var(--dirty);
+    }
+    .git-badge.ahead {
+      background: var(--accent-soft);
+      color: var(--accent);
+    }
+    .git-badge.behind {
+      background: var(--open-soft);
+      color: var(--open);
+    }
+    .git-meta {
+      display: grid;
+      gap: 0.35rem;
+      font-size: 0.84rem;
+      color: var(--text-muted);
+      margin-bottom: 0.85rem;
+    }
+    .git-meta strong { color: var(--text); font-weight: 600; }
+    .git-meta .mono { font-family: var(--mono); font-size: 0.8rem; }
+    .git-commit {
+      background: var(--bg);
+      border: 1px solid var(--border-soft);
+      border-radius: var(--radius-sm);
+      padding: 0.65rem 0.8rem;
+      margin-bottom: 0.85rem;
+    }
+    .git-commit .subject {
+      color: var(--text);
+      font-weight: 550;
+      font-size: 0.88rem;
+      margin-bottom: 0.25rem;
+    }
+    .git-commit .sub {
+      font-size: 0.75rem;
+      color: var(--text-dim);
+      font-family: var(--mono);
+    }
+    .git-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.45rem;
+    }
+    .git-actions .btn.small {
+      padding: 0.4rem 0.7rem;
+      font-size: 0.78rem;
+    }
+    .toast {
+      position: fixed;
+      bottom: 1.25rem;
+      right: 1.25rem;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 0.65rem 0.95rem;
+      border-radius: var(--radius-sm);
+      box-shadow: var(--shadow);
+      font-size: 0.84rem;
+      z-index: 100;
+      opacity: 0;
+      transform: translateY(8px);
+      transition: opacity 0.2s, transform 0.2s;
+      pointer-events: none;
+    }
+    .toast.show { opacity: 1; transform: translateY(0); }
+    .toast.err { border-color: rgba(240,113,120,0.4); color: var(--danger); }
+
+    .proj-card .git-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.35rem;
+      margin-top: 0.55rem;
+      align-items: center;
+    }
+    .proj-card .git-row .gb {
+      font-family: var(--mono);
+      font-size: 0.68rem;
+      color: var(--git);
+      background: var(--git-soft);
+      padding: 0.08rem 0.4rem;
+      border-radius: 4px;
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .proj-card .git-row .gd {
+      font-size: 0.68rem;
+      font-weight: 650;
+      color: var(--dirty);
+    }
+    .proj-card .git-row .gc {
+      font-size: 0.68rem;
+      color: var(--done);
+    }
+    .sidebar-git-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--git);
+      flex-shrink: 0;
+      opacity: 0.85;
+    }
+    .sidebar-git-dot.dirty { background: var(--dirty); }
+
+    /* Interactive checkboxes */
+    .todo-item { cursor: default; }
+    .todo-item .check {
+      cursor: pointer;
+      transition: transform 0.1s, border-color 0.12s, background 0.12s;
+    }
+    .todo-item .check:hover {
+      transform: scale(1.08);
+      border-color: var(--accent);
+    }
+    .todo-item.busy { opacity: 0.55; pointer-events: none; }
+    .todo-actions {
+      display: flex;
+      gap: 0.3rem;
+      align-items: flex-start;
+    }
+    .icon-btn {
+      background: var(--bg);
+      border: 1px solid var(--border-soft);
+      color: var(--text-muted);
+      border-radius: 6px;
+      width: 28px;
+      height: 28px;
+      cursor: pointer;
+      font-size: 0.75rem;
+      display: grid;
+      place-items: center;
+      flex-shrink: 0;
+    }
+    .icon-btn:hover {
+      color: var(--accent);
+      border-color: rgba(91, 157, 255, 0.35);
+      background: var(--accent-soft);
+    }
+
+    /* Modal */
+    .modal-backdrop {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.55);
+      z-index: 80;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+    }
+    .modal-backdrop.show { display: flex; }
+    .modal {
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      width: min(560px, 100%);
+      max-height: min(90vh, 820px);
+      overflow: auto;
+      box-shadow: var(--shadow);
+      padding: 1.15rem 1.25rem 1.25rem;
+    }
+    .modal h3 {
+      font-size: 1.05rem;
+      font-weight: 650;
+      margin-bottom: 0.25rem;
+    }
+    .modal .sub {
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      margin-bottom: 1rem;
+    }
+    .form-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.7rem;
+    }
+    @media (max-width: 520px) {
+      .form-grid { grid-template-columns: 1fr; }
+    }
+    .form-field { display: flex; flex-direction: column; gap: 0.3rem; }
+    .form-field.full { grid-column: 1 / -1; }
+    .form-field label {
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-dim);
+      font-weight: 650;
+    }
+    .form-field input,
+    .form-field select,
+    .form-field textarea {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: var(--radius-sm);
+      padding: 0.5rem 0.65rem;
+      font-size: 0.88rem;
+      font-family: var(--font);
+      outline: none;
+    }
+    .form-field textarea {
+      min-height: 120px;
+      resize: vertical;
+      line-height: 1.45;
+    }
+    .form-field input:focus,
+    .form-field select:focus,
+    .form-field textarea:focus {
+      border-color: var(--accent);
+    }
+    .form-check {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.86rem;
+      color: var(--text-muted);
+      margin-top: 0.15rem;
+    }
+    .form-check input { accent-color: var(--accent); width: 15px; height: 15px; }
+    .cli-pills {
+      display: flex;
+      gap: 0.4rem;
+      flex-wrap: wrap;
+    }
+    .cli-pill {
+      border: 1px solid var(--border);
+      background: var(--bg);
+      color: var(--text-muted);
+      border-radius: 999px;
+      padding: 0.35rem 0.75rem;
+      font-size: 0.8rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .cli-pill.active {
+      background: var(--accent-soft);
+      border-color: rgba(91, 157, 255, 0.4);
+      color: var(--accent);
+    }
+    .cli-pill:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+    .cli-pill .dot {
+      display: inline-block;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--done);
+      margin-right: 0.3rem;
+      vertical-align: middle;
+    }
+    .cli-pill .dot.off { background: var(--text-dim); }
+    .modal-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 0.5rem;
+      margin-top: 1rem;
+      flex-wrap: wrap;
+    }
+    .cmd-preview {
+      margin-top: 0.75rem;
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      color: var(--text-dim);
+      background: var(--bg);
+      border: 1px solid var(--border-soft);
+      border-radius: var(--radius-sm);
+      padding: 0.55rem 0.7rem;
+      word-break: break-all;
+      white-space: pre-wrap;
+    }
+
+    .conn-banner {
+      display: none;
+      background: rgba(240, 113, 120, 0.15);
+      border-bottom: 1px solid rgba(240, 113, 120, 0.4);
+      color: var(--danger);
+      padding: 0.55rem 1.25rem;
+      font-size: 0.84rem;
+      font-weight: 550;
+      align-items: center;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+    }
+    .conn-banner.show { display: flex; }
+    .conn-banner button {
+      margin-left: auto;
+    }
+    .conn-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--done);
+      display: inline-block;
+      margin-right: 0.35rem;
+    }
+    .conn-dot.down { background: var(--danger); box-shadow: 0 0 0 3px rgba(240,113,120,0.2); }
+
+    .path-row {
+      display: flex;
+      gap: 0.45rem;
+      align-items: stretch;
+    }
+    .path-row input { flex: 1; min-width: 0; }
+    .path-row .btn { flex-shrink: 0; }
+
+    .folder-browser {
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      background: var(--bg);
+      max-height: 280px;
+      overflow: auto;
+      margin-top: 0.5rem;
+    }
+    .folder-browser .fb-path {
+      position: sticky;
+      top: 0;
+      background: var(--bg-elevated);
+      border-bottom: 1px solid var(--border-soft);
+      padding: 0.45rem 0.65rem;
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      color: var(--text-muted);
+      display: flex;
+      gap: 0.4rem;
+      align-items: center;
+      z-index: 1;
+    }
+    .folder-browser .fb-path button {
+      border: none;
+      background: var(--bg-card);
+      color: var(--accent);
+      border-radius: 4px;
+      padding: 0.15rem 0.4rem;
+      font-size: 0.72rem;
+      cursor: pointer;
+      font-weight: 600;
+    }
+    .fb-item {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      width: 100%;
+      text-align: left;
+      border: none;
+      background: transparent;
+      color: var(--text);
+      padding: 0.45rem 0.65rem;
+      font-size: 0.84rem;
+      cursor: pointer;
+      border-bottom: 1px solid var(--border-soft);
+    }
+    .fb-item:hover { background: var(--bg-hover); }
+    .fb-item .tags { margin-left: auto; display: flex; gap: 0.3rem; }
+    .fb-item .tag {
+      font-size: 0.65rem;
+      font-weight: 650;
+      padding: 0.08rem 0.35rem;
+      border-radius: 999px;
+      background: var(--git-soft);
+      color: var(--git);
+    }
+    .fb-item .tag.todo {
+      background: var(--open-soft);
+      color: var(--open);
+    }
+    .settings-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-soft);
+      border-radius: var(--radius);
+      padding: 1.1rem 1.15rem;
+      margin-bottom: 1rem;
+      max-width: 720px;
+    }
+    .settings-card h3 {
+      font-size: 0.95rem;
+      margin-bottom: 0.85rem;
+      font-weight: 650;
+    }
+    .settings-card .form-grid { margin-bottom: 0.5rem; }
+    .hint {
+      font-size: 0.75rem;
+      color: var(--text-dim);
+      margin-top: 0.25rem;
+    }
+    .view-toggle.three { grid-template-columns: 1fr 1fr 1fr; }
+    .view-toggle.four { grid-template-columns: 1fr 1fr 1fr 1fr; }
+
+    /* Agents workspace */
+    .agents-layout {
+      display: grid;
+      grid-template-columns: 280px 1fr;
+      gap: 0.85rem;
+      min-height: calc(100vh - 140px);
+    }
+    @media (max-width: 900px) {
+      .agents-layout { grid-template-columns: 1fr; }
+    }
+    .session-list {
+      background: var(--bg-card);
+      border: 1px solid var(--border-soft);
+      border-radius: var(--radius);
+      overflow: auto;
+      max-height: calc(100vh - 140px);
+    }
+    .session-list-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.75rem 0.85rem;
+      border-bottom: 1px solid var(--border-soft);
+      font-size: 0.78rem;
+      font-weight: 650;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .session-item {
+      display: block;
+      width: 100%;
+      text-align: left;
+      border: none;
+      border-bottom: 1px solid var(--border-soft);
+      background: transparent;
+      color: var(--text);
+      padding: 0.7rem 0.85rem;
+      cursor: pointer;
+    }
+    .session-item:hover { background: var(--bg-hover); }
+    .session-item.active {
+      background: var(--accent-soft);
+      border-left: 3px solid var(--accent);
+    }
+    .session-item .s-name {
+      font-weight: 600;
+      font-size: 0.88rem;
+      margin-bottom: 0.2rem;
+    }
+    .session-item .s-meta {
+      font-size: 0.72rem;
+      color: var(--text-dim);
+      display: flex;
+      gap: 0.4rem;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .status-pill {
+      font-size: 0.65rem;
+      font-weight: 700;
+      padding: 0.1rem 0.4rem;
+      border-radius: 999px;
+      text-transform: uppercase;
+    }
+    .status-pill.running, .status-pill.queued { background: var(--accent-soft); color: var(--accent); }
+    .status-pill.waiting { background: var(--done-soft); color: var(--done); }
+    .status-pill.failed, .status-pill.stopped { background: rgba(240,113,120,0.15); color: var(--danger); }
+    .status-pill.completed, .status-pill.stopping { background: var(--bg); color: var(--text-muted); border: 1px solid var(--border); }
+
+    .chat-panel {
+      background: var(--bg-card);
+      border: 1px solid var(--border-soft);
+      border-radius: var(--radius);
+      display: flex;
+      flex-direction: column;
+      min-height: 420px;
+      max-height: calc(100vh - 140px);
+    }
+    .chat-header {
+      padding: 0.85rem 1rem;
+      border-bottom: 1px solid var(--border-soft);
+      display: flex;
+      gap: 0.75rem;
+      align-items: flex-start;
+      flex-wrap: wrap;
+    }
+    .chat-header h3 { font-size: 1rem; font-weight: 650; }
+    .chat-header .sub { font-size: 0.75rem; color: var(--text-dim); font-family: var(--mono); }
+    .chat-header .actions { margin-left: auto; display: flex; gap: 0.4rem; flex-wrap: wrap; }
+    .chat-log {
+      flex: 1;
+      overflow-y: auto;
+      padding: 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+    .bubble {
+      max-width: min(780px, 95%);
+      padding: 0.7rem 0.85rem;
+      border-radius: 12px;
+      font-size: 0.88rem;
+      line-height: 1.45;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .bubble.user {
+      align-self: flex-end;
+      background: var(--accent-soft);
+      border: 1px solid rgba(91,157,255,0.25);
+    }
+    .bubble.assistant {
+      align-self: flex-start;
+      background: var(--bg);
+      border: 1px solid var(--border-soft);
+    }
+    .bubble.system {
+      align-self: center;
+      background: transparent;
+      color: var(--text-dim);
+      font-size: 0.78rem;
+      border: 1px dashed var(--border);
+      max-width: 100%;
+    }
+    .bubble .who {
+      font-size: 0.68rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--text-dim);
+      margin-bottom: 0.3rem;
+    }
+    .chat-compose {
+      border-top: 1px solid var(--border-soft);
+      padding: 0.75rem;
+      display: flex;
+      gap: 0.5rem;
+      align-items: flex-end;
+    }
+    .chat-compose textarea {
+      flex: 1;
+      min-height: 56px;
+      max-height: 160px;
+      resize: vertical;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: var(--radius-sm);
+      padding: 0.55rem 0.7rem;
+      font-family: var(--font);
+      font-size: 0.88rem;
+    }
+    .live-log {
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      color: var(--text-dim);
+      background: var(--bg);
+      border-top: 1px solid var(--border-soft);
+      max-height: 140px;
+      overflow: auto;
+      padding: 0.5rem 0.75rem;
+      white-space: pre-wrap;
+    }
+    .child-row {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      margin-top: 0.35rem;
+    }
+    .child-row button {
+      background: none;
+      border: none;
+      color: var(--accent);
+      cursor: pointer;
+      font-size: 0.75rem;
+      text-decoration: underline;
+      padding: 0;
+    }
+
+    /* App chrome (brand + GitHub) */
+    .app-chrome {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.4rem 1.25rem;
+      border-bottom: 1px solid var(--border-soft);
+      background: rgba(12, 15, 20, 0.96);
+      backdrop-filter: blur(10px);
+      position: sticky;
+      top: 0;
+      z-index: 30;
+    }
+    .app-chrome .brand {
+      font-size: 0.82rem;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      color: var(--text);
+      text-decoration: none;
+    }
+    .app-chrome .brand:hover { color: var(--accent); }
+    .app-chrome .brand span {
+      color: var(--text-dim);
+      font-weight: 500;
+      margin-left: 0.35rem;
+    }
+    .app-chrome .chrome-spacer { flex: 1; }
+    .app-chrome .github-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-decoration: none;
+      padding: 0.28rem 0.55rem;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: var(--bg-card);
+      transition: color 0.15s, border-color 0.15s, background 0.15s;
+    }
+    .app-chrome .github-link:hover {
+      color: var(--text);
+      border-color: var(--accent);
+      background: var(--accent-soft);
+    }
+    .app-chrome .github-link svg {
+      width: 14px;
+      height: 14px;
+      fill: currentColor;
+    }
+
+    /* Usage meters */
+    .usage-bar {
+      display: flex;
+      gap: 0.65rem;
+      flex-wrap: wrap;
+      padding: 0.55rem 1.25rem;
+      border-bottom: 1px solid var(--border-soft);
+      background: rgba(18, 22, 30, 0.92);
+      backdrop-filter: blur(10px);
+      position: sticky;
+      top: 2.15rem;
+      z-index: 20;
+    }
+    .usage-card {
+      flex: 1;
+      min-width: 240px;
+      background: var(--bg-card);
+      border: 1px solid var(--border-soft);
+      border-radius: 10px;
+      padding: 0.45rem 0.7rem 0.55rem;
+    }
+    .usage-card .u-top {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      margin-bottom: 0.3rem;
+    }
+    .usage-card .u-name {
+      font-size: 0.78rem;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+    }
+    .usage-card .u-plan {
+      font-size: 0.68rem;
+      color: var(--text-dim);
+      margin-left: auto;
+      max-width: 45%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .usage-card .u-track {
+      height: 7px;
+      background: var(--border-soft);
+      border-radius: 999px;
+      overflow: hidden;
+      margin-bottom: 0.28rem;
+    }
+    .usage-card .u-fill {
+      height: 100%;
+      border-radius: 999px;
+      transition: width 0.4s ease, background 0.3s;
+      background: linear-gradient(90deg, var(--done), #2db87a);
+    }
+    .usage-card .u-fill.warn { background: linear-gradient(90deg, var(--open), #e08a1a); }
+    .usage-card .u-fill.hot { background: linear-gradient(90deg, #f07178, #e03e48); }
+    .usage-card .u-fill.hard { background: linear-gradient(90deg, #e03e48, #9b1c2e); }
+    .usage-card .u-fill.unknown {
+      width: 100% !important;
+      background: repeating-linear-gradient(
+        90deg,
+        rgba(91,157,255,0.25),
+        rgba(91,157,255,0.25) 8px,
+        rgba(91,157,255,0.08) 8px,
+        rgba(91,157,255,0.08) 16px
+      );
+    }
+    .usage-card .u-windows {
+      display: flex;
+      flex-direction: column;
+      gap: 0.28rem;
+      margin-bottom: 0.2rem;
+    }
+    .usage-card .u-win {
+      display: grid;
+      grid-template-columns: 5.2rem 1fr 2.2rem 3.6rem;
+      align-items: center;
+      gap: 0.3rem;
+    }
+    .usage-card .u-win-label {
+      font-size: 0.64rem;
+      color: var(--text-dim);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .usage-card .u-win-label .tag {
+      font-size: 0.58rem;
+      opacity: 0.75;
+      margin-left: 0.15rem;
+    }
+    .usage-card .u-win .u-track {
+      height: 5px;
+      margin-bottom: 0;
+    }
+    .usage-card .u-win-pct {
+      font-size: 0.64rem;
+      color: var(--text-muted);
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+    .usage-card .u-win-reset {
+      font-size: 0.62rem;
+      color: var(--text-dim);
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+      letter-spacing: -0.01em;
+    }
+    .usage-card .u-win-reset.soon { color: var(--open); }
+    .usage-card .u-win-reset.now { color: var(--danger); }
+    .usage-card .u-win-reset.empty { opacity: 0.35; }
+    .usage-card .u-meta {
+      font-size: 0.68rem;
+      color: var(--text-muted);
+      display: flex;
+      gap: 0.35rem;
+      flex-wrap: wrap;
+    }
+    .usage-card .u-meta .err { color: var(--danger); }
+    .usage-card.offline { opacity: 0.55; }
+    .usage-dot {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: var(--done); flex-shrink: 0;
+    }
+    .usage-dot.off { background: var(--text-dim); }
+    .usage-dot.err { background: var(--danger); }
+  </style>
+</head>
+<body>
+  <div class="toast" id="toast"></div>
+  <div class="app-chrome" id="appChrome">
+    <a class="brand" href="/" title="TODO Dashboard">TODO Dashboard<span>local</span></a>
+    <div class="chrome-spacer"></div>
+    <a class="github-link"
+       id="githubLink"
+       href="https://github.com/Zonatedace/todo-dashboard"
+       target="_blank"
+       rel="noopener noreferrer"
+       title="Open source on GitHub">
+      <svg viewBox="0 0 16 16" aria-hidden="true">
+        <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38
+          0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52
+          -.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2
+          -3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64
+          -.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82
+          1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0
+          .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
+      </svg>
+      GitHub
+    </a>
+  </div>
+  <div class="conn-banner" id="connBanner">
+    <span><span class="conn-dot down"></span>Server unreachable — start todo-dashboard or click Retry</span>
+    <button type="button" class="btn" id="btnRetryConn">Retry</button>
+  </div>
+  <div class="usage-bar" id="usageBar" title="Live agent usage (polls every 60s; server caches + backs off on 429)">
+    <div class="usage-card offline" data-id="claude"><div class="u-top"><span class="usage-dot off"></span><span class="u-name">Claude</span></div><div class="u-track"><div class="u-fill unknown"></div></div><div class="u-meta">loading…</div></div>
+    <div class="usage-card offline" data-id="grok"><div class="u-top"><span class="usage-dot off"></span><span class="u-name">Grok</span></div><div class="u-track"><div class="u-fill unknown"></div></div><div class="u-meta">loading…</div></div>
+    <div class="usage-card offline" data-id="codex"><div class="u-top"><span class="usage-dot off"></span><span class="u-name">Codex</span></div><div class="u-track"><div class="u-fill unknown"></div></div><div class="u-meta">loading…</div></div>
+  </div>
+  <div class="modal-backdrop" id="agentModal">
+    <div class="modal" role="dialog" aria-labelledby="agentModalTitle">
+      <h3 id="agentModalTitle">Start agent</h3>
+      <p class="sub" id="agentModalSub">Run Grok, Claude, or Codex — in the dashboard or an external terminal</p>
+      <div class="form-field full" style="margin-bottom:0.75rem">
+        <label>Run mode</label>
+        <div class="cli-pills" id="runModePills">
+          <button type="button" class="cli-pill active" data-run-mode="inapp">In-app session</button>
+          <button type="button" class="cli-pill" data-run-mode="external">External terminal</button>
+        </div>
+      </div>
+      <div class="form-field full" style="margin-bottom:0.75rem">
+        <label>CLI</label>
+        <div class="cli-pills" id="cliPills"></div>
+      </div>
+      <div class="form-grid">
+        <div class="form-field full">
+          <label class="form-check" style="text-transform:none;letter-spacing:0;font-weight:500">
+            <input type="checkbox" id="agentOrchestrator" />
+            Orchestrator (can spawn multiple sub-agents)
+          </label>
+        </div>
+        <div class="form-field full">
+          <label for="agentCwd">Working directory</label>
+          <div class="path-row">
+            <input id="agentCwd" type="text" placeholder="Folder path" autocomplete="off" spellcheck="false" />
+            <button type="button" class="btn" id="agentBrowseCwd" title="Browse folders">Browse…</button>
+            <button type="button" class="btn" id="agentResetCwd" title="Reset to default">Reset</button>
+          </div>
+          <div class="hint" id="agentCwdHint">Defaults to the repos root on global view, or the project folder when a project is selected.</div>
+          <div id="agentFolderBrowser" class="folder-browser" style="display:none"></div>
+        </div>
+        <div class="form-field">
+          <label for="agentModel">Model</label>
+          <select id="agentModel"></select>
+          <div class="hint" id="agentModelSource"></div>
+        </div>
+        <div class="form-field">
+          <label for="agentEffort">Effort / reasoning</label>
+          <select id="agentEffort"></select>
+        </div>
+        <div class="form-field full">
+          <label for="agentName">Session name (optional)</label>
+          <input id="agentName" placeholder="e.g. fix-auth" autocomplete="off" />
+        </div>
+        <div class="form-field full">
+          <label class="form-check" style="text-transform:none;letter-spacing:0;font-weight:500">
+            <input type="checkbox" id="agentAlwaysApprove" />
+            Auto-approve tools / skip permission prompts
+          </label>
+        </div>
+        <div class="form-field full">
+          <label for="agentPrompt">Prompt</label>
+          <textarea id="agentPrompt" placeholder="What should the agent do?"></textarea>
+        </div>
+        <div class="form-field full">
+          <label for="agentExtra">Extra args (space-separated, optional)</label>
+          <input id="agentExtra" placeholder='e.g. --max-turns 20' autocomplete="off" />
+        </div>
+      </div>
+      <div class="cmd-preview" id="agentPreview">Select a CLI to preview the command</div>
+      <div class="modal-actions">
+        <button type="button" class="btn" id="agentCancel">Cancel</button>
+        <button type="button" class="btn primary" id="agentStart">▶ Start agent</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Folder browser used from Settings (root path) -->
+  <div class="modal-backdrop" id="folderModal">
+    <div class="modal" role="dialog" aria-labelledby="folderModalTitle">
+      <h3 id="folderModalTitle">Choose folder</h3>
+      <p class="sub" id="folderModalSub">Navigate to a directory</p>
+      <div id="folderModalBrowser" class="folder-browser" style="display:block;max-height:360px"></div>
+      <div class="modal-actions">
+        <button type="button" class="btn" id="folderModalCancel">Cancel</button>
+        <button type="button" class="btn primary" id="folderModalSelect">Use this folder</button>
+      </div>
+    </div>
+  </div>
+  <div class="backdrop" id="backdrop"></div>
+  <div class="app">
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <div class="brand">
+          <div class="brand-mark">TD</div>
+          <div>
+            <h1>TODO Dashboard</h1>
+            <span id="rootPath">scanning…</span>
+          </div>
+        </div>
+        <div class="search-wrap">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/>
+          </svg>
+          <input id="projectSearch" type="search" placeholder="Filter projects…" autocomplete="off" />
+        </div>
+        <div class="view-toggle four">
+          <button type="button" id="btnGlobal" class="active">All</button>
+          <button type="button" id="btnProject">Project</button>
+          <button type="button" id="btnAgents">Agents</button>
+          <button type="button" id="btnSettings">Settings</button>
+        </div>
+      </div>
+      <div class="project-list" id="projectList"></div>
+      <div class="sidebar-footer">
+        Scanned <span id="scannedAt">—</span>
+        · <span class="kb-hint"><kbd>/</kbd> · <kbd>r</kbd> · <kbd>a</kbd> · <kbd>,</kbd></span>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <button type="button" class="menu-btn" id="menuBtn" aria-label="Menu">☰</button>
+        <div class="topbar-title">
+          <h2 id="pageTitle">Global overview</h2>
+          <p id="pageSubtitle">Open items across all repos</p>
+        </div>
+        <div class="actions">
+          <button type="button" class="btn" id="btnAgent" title="Start an agent in this project">▶ Agent</button>
+          <button type="button" class="btn" id="btnShowDone" title="Toggle completed items">Show done</button>
+          <button type="button" class="btn primary" id="btnRefresh">↻ Refresh</button>
+        </div>
+      </header>
+      <div class="content" id="content">
+        <div class="loading">Loading TODOs…</div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    const state = {
+      view: "global", // global | project | settings | agents
+      projectId: null,
+      data: null,       // GlobalView
+      project: null,    // ProjectTodos when in project view
+      showDone: false,
+      projectFilter: "",
+      itemFilter: "",
+      itemStatus: "open", // open | done | all
+      discovery: null,
+      settings: null,
+      agent: {
+        cli: "grok",
+        projectId: null,
+        prompt: "",
+        defaultCwd: "",
+        cwd: "",
+        runMode: "inapp", // inapp | external
+      },
+      sessions: [],
+      activeSessionId: null,
+      sessionDetail: null, // { session, messages, log }
+      sessionEs: null,
+      folderPicker: {
+        target: null, // "agent" | "settings-root" | "settings-agent-cwd"
+        path: "",
+      },
+      healthPollSeconds: 15,
+      autoRefreshMinutes: 0,
+      autoRefreshTimer: null,
+    };
+
+    const $ = (sel) => document.querySelector(sel);
+    let serverOnline = true;
+
+    function setServerOnline(online) {
+      serverOnline = online;
+      const banner = $("#connBanner");
+      if (banner) banner.classList.toggle("show", !online);
+    }
+
+    function formatApiError(status, bodyText) {
+      let msg = bodyText || "";
+      try {
+        const j = JSON.parse(bodyText);
+        if (j.error) msg = j.error;
+        if (j.similar && j.similar.length) {
+          msg += ` (similar: ${j.similar.join(", ")})`;
+        }
+      } catch { /* raw text */ }
+      if (msg.length > 300) msg = msg.slice(0, 300) + "…";
+      return status ? `HTTP ${status}: ${msg}` : msg;
+    }
+
+    async function api(path, opts = {}) {
+      const timeoutMs = opts.timeoutMs ?? 60000;
+      const { timeoutMs: _drop, ...fetchOpts } = opts;
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        const res = await fetch(path, {
+          ...fetchOpts,
+          signal: controller.signal,
+          headers: {
+            "Accept": "application/json",
+            ...(fetchOpts.headers || {}),
+          },
+        });
+        setServerOnline(true);
+        const text = await res.text();
+        let data = null;
+        if (text) {
+          try {
+            data = JSON.parse(text);
+          } catch {
+            if (!res.ok) throw new Error(formatApiError(res.status, text));
+            throw new Error(`Invalid JSON from ${path}`);
+          }
+        }
+        if (!res.ok) {
+          throw new Error(formatApiError(res.status, text));
+        }
+        return data;
+      } catch (e) {
+        if (e.name === "AbortError") {
+          throw new Error(`Request timed out after ${timeoutMs / 1000}s (${path})`);
+        }
+        // Network / CORS / server down
+        if (e instanceof TypeError || /Failed to fetch|NetworkError|Load failed/i.test(e.message || "")) {
+          setServerOnline(false);
+          throw new Error(
+            `Cannot reach server at ${location.origin} — is todo-dashboard running? ` +
+            `Try: start.ps1 or target\\release\\todo-dashboard.exe`
+          );
+        }
+        throw e;
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+
+    async function checkHealth() {
+      try {
+        await api("/api/health", { timeoutMs: 4000 });
+        setServerOnline(true);
+        return true;
+      } catch {
+        setServerOnline(false);
+        return false;
+      }
+    }
+
+    function fmtTime(iso) {
+      if (!iso) return "—";
+      try {
+        const d = new Date(iso);
+        return d.toLocaleString(undefined, {
+          month: "short", day: "numeric", hour: "2-digit", minute: "2-digit"
+        });
+      } catch { return iso; }
+    }
+
+    function escapeHtml(s) {
+      return String(s)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+
+    function pctDone(done, total) {
+      if (!total) return 0;
+      return Math.round((done / total) * 100);
+    }
+
+    function matchesFilter(text, filter) {
+      if (!filter) return true;
+      return text.toLowerCase().includes(filter.toLowerCase());
+    }
+
+    function toast(msg, isErr) {
+      const el = $("#toast");
+      el.textContent = msg;
+      el.classList.toggle("err", !!isErr);
+      el.classList.add("show");
+      clearTimeout(toast._t);
+      toast._t = setTimeout(() => el.classList.remove("show"), 2400);
+    }
+
+    async function postJson(path, body) {
+      const res = await fetch(path, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || res.statusText);
+      return data;
+    }
+
+    /* ---------- Todo toggle ---------- */
+    async function toggleTodo(projectId, line, done) {
+      const result = await postJson("/api/todos/toggle", {
+        project_id: projectId,
+        line,
+        done,
+      });
+
+      // Update project detail cache
+      if (state.project && state.project.id === projectId) {
+        state.project.items = result.project.items;
+        state.project.open = result.project.open;
+        state.project.done = result.project.done;
+        state.project.total = result.project.total;
+      }
+
+      // Update global aggregates
+      if (state.data) {
+        state.data.total_open = result.totals.total_open;
+        state.data.total_done = result.totals.total_done;
+        state.data.total_items = result.totals.total_items;
+        const sum = state.data.projects.find(p => p.id === projectId);
+        if (sum) {
+          sum.open = result.project.open;
+          sum.done = result.project.done;
+          sum.total = result.project.total;
+        }
+
+        if (state.project && state.project.id === projectId) {
+          // Full rebuild for this project from refreshed items
+          state.data.open_items = state.data.open_items.filter(i => i.project_id !== projectId);
+          for (const item of state.project.items.filter(i => !i.done)) {
+            state.data.open_items.push({
+              project_id: projectId,
+              project_name: state.project.name,
+              text: item.text,
+              line: item.line,
+              section: item.section,
+            });
+          }
+        } else {
+          // Surgical update for a single line (global board without full project cache)
+          state.data.open_items = state.data.open_items.filter(
+            i => !(i.project_id === projectId && i.line === line)
+          );
+          if (!done) {
+            state.data.open_items.push({
+              project_id: projectId,
+              project_name: sum?.name || projectId,
+              text: result.item.text,
+              line: result.item.line,
+              section: result.item.section,
+            });
+          }
+        }
+        state.data.open_items.sort((a, b) =>
+          a.project_name.localeCompare(b.project_name) || a.line - b.line
+        );
+      }
+      return result;
+    }
+
+    /* ---------- Settings + folder browser ---------- */
+    async function loadSettings() {
+      const res = await api("/api/settings");
+      state.settings = res.settings;
+      state.healthPollSeconds = res.settings.health_poll_seconds || 15;
+      state.autoRefreshMinutes = res.settings.auto_refresh_minutes || 0;
+      applySettingsToUiDefaults();
+      setupAutoRefresh();
+      return res;
+    }
+
+    function applySettingsToUiDefaults() {
+      const s = state.settings;
+      if (!s) return;
+      if (s.default_cli) state.agent.cli = s.default_cli;
+      if (s.default_item_status) {
+        state.itemStatus = s.default_item_status;
+        state.showDone = s.default_item_status !== "open";
+      }
+    }
+
+    function setupAutoRefresh() {
+      if (state.autoRefreshTimer) {
+        clearInterval(state.autoRefreshTimer);
+        state.autoRefreshTimer = null;
+      }
+      const mins = Number(state.autoRefreshMinutes) || 0;
+      if (mins > 0) {
+        state.autoRefreshTimer = setInterval(() => {
+          refresh().catch(() => {});
+        }, mins * 60 * 1000);
+      }
+    }
+
+    function defaultAgentCwd(projectId) {
+      const s = state.settings;
+      const root = state.data?.root || s?.root || "";
+      // Explicit project → project path when we know it
+      if (projectId) {
+        if (state.project && state.project.id === projectId) {
+          return state.project.git?.root || state.project.path || root;
+        }
+        // path not loaded; use root/id heuristic
+        if (root) {
+          const sep = root.includes("\\") ? "\\" : "/";
+          return root.replace(/[\\/]+$/, "") + sep + projectId.replace(/\//g, sep);
+        }
+      }
+      // Global: settings default_agent_cwd or repos root
+      if (s?.default_agent_cwd) return s.default_agent_cwd;
+      return root;
+    }
+
+    async function renderFolderBrowser(hostEl, path, onSelectDir) {
+      hostEl.style.display = "block";
+      hostEl.innerHTML = `<div class="fb-path">Loading…</div>`;
+      try {
+        const listing = await api("/api/fs/list?path=" + encodeURIComponent(path || ""));
+        state.folderPicker.path = listing.path;
+        const upDisabled = listing.parent == null && listing.at_system_root;
+        hostEl.innerHTML = `
+          <div class="fb-path">
+            <button type="button" data-fb-up ${upDisabled ? "disabled" : ""} title="Up">↑</button>
+            <button type="button" data-fb-drives title="Drives / roots">Disks</button>
+            <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1">${escapeHtml(listing.path)}</span>
+          </div>
+          ${listing.entries.length ? listing.entries.map(e => `
+            <button type="button" class="fb-item" data-path="${escapeHtml(e.path)}">
+              <span>📁</span>
+              <span>${escapeHtml(e.name)}</span>
+              <span class="tags">
+                ${e.is_git ? `<span class="tag">git</span>` : ""}
+                ${e.has_todo ? `<span class="tag todo">TODO</span>` : ""}
+              </span>
+            </button>`).join("") : `<div class="empty" style="padding:1rem;font-size:0.84rem">No subfolders</div>`}
+        `;
+        hostEl.querySelector("[data-fb-up]")?.addEventListener("click", () => {
+          if (listing.parent != null) renderFolderBrowser(hostEl, listing.parent, onSelectDir);
+          else renderFolderBrowser(hostEl, "drives", onSelectDir);
+        });
+        hostEl.querySelector("[data-fb-drives]")?.addEventListener("click", () => {
+          renderFolderBrowser(hostEl, "drives", onSelectDir);
+        });
+        hostEl.querySelectorAll(".fb-item").forEach(btn => {
+          btn.addEventListener("dblclick", () => {
+            renderFolderBrowser(hostEl, btn.dataset.path, onSelectDir);
+          });
+          btn.addEventListener("click", () => {
+            // single click selects for use / navigates
+            hostEl.querySelectorAll(".fb-item").forEach(b => b.style.background = "");
+            btn.style.background = "var(--accent-soft)";
+            state.folderPicker.path = btn.dataset.path;
+            if (onSelectDir) onSelectDir(btn.dataset.path, false);
+          });
+        });
+      } catch (e) {
+        hostEl.innerHTML = `<div class="error" style="margin:0.5rem">${escapeHtml(e.message)}</div>`;
+      }
+    }
+
+    function openFolderModal(opts) {
+      state.folderPicker.target = opts.target;
+      const start = opts.startPath || state.data?.root || state.settings?.root || "";
+      $("#folderModalSub").textContent = opts.title || "Navigate to a directory, then click Use this folder";
+      $("#folderModal").classList.add("show");
+      renderFolderBrowser($("#folderModalBrowser"), start, (path) => {
+        state.folderPicker.path = path;
+      });
+    }
+
+    function closeFolderModal() {
+      $("#folderModal").classList.remove("show");
+      state.folderPicker.target = null;
+    }
+
+    /* ---------- Agent modal ---------- */
+    async function ensureDiscovery() {
+      if (state.discovery) return state.discovery;
+      state.discovery = await api("/api/agents/discover");
+      return state.discovery;
+    }
+
+    function openAgentModal(opts = {}) {
+      // Global: no required project — cwd defaults to repos root
+      // Project: prefer selected project
+      let projectId = opts.projectId;
+      if (projectId === undefined) {
+        projectId = state.view === "project" ? state.projectId : null;
+      }
+      // From a todo row, projectId is always set
+      state.agent.projectId = projectId || "";
+      state.agent.prompt = opts.prompt || "";
+      state.agent.defaultCwd = opts.cwd || defaultAgentCwd(projectId);
+      state.agent.cwd = state.agent.defaultCwd;
+      state.agent.runMode = state.agent.runMode || "inapp";
+      state.agent.spawnParentId = opts.spawnParentId || null;
+
+      const label = projectId
+        ? (state.project?.name || state.data?.projects?.find(p => p.id === projectId)?.name || projectId)
+        : "repos root (global)";
+      $("#agentModalSub").textContent = projectId
+        ? `Project context: ${label}`
+        : `Global mode — default working directory is the repos root`;
+      $("#agentCwd").value = state.agent.cwd;
+      $("#agentCwdHint").textContent = projectId
+        ? "Defaults to this project's folder (git root when available). Browse to override."
+        : "Defaults to the configured repos root. Browse to pick a specific repo.";
+      $("#agentFolderBrowser").style.display = "none";
+      $("#agentPrompt").value = state.agent.prompt;
+      $("#agentName").value = opts.name || "";
+
+      const s = state.settings;
+      $("#agentAlwaysApprove").checked = !!(s?.default_always_approve);
+      $("#agentExtra").value = "";
+      if (s?.default_cli) state.agent.cli = s.default_cli;
+      // model/effort selects filled by fillPresets() after discovery
+
+      // run mode pills
+      document.querySelectorAll("#runModePills .cli-pill").forEach(btn => {
+        btn.classList.toggle("active", btn.dataset.runMode === state.agent.runMode);
+        btn.onclick = () => {
+          state.agent.runMode = btn.dataset.runMode;
+          document.querySelectorAll("#runModePills .cli-pill").forEach(b =>
+            b.classList.toggle("active", b.dataset.runMode === state.agent.runMode));
+          // external uses interactive terminal modes; in-app hides less relevant fields subtly
+          updateAgentPreview();
+        };
+      });
+      if ($("#agentOrchestrator")) $("#agentOrchestrator").checked = false;
+
+      ensureDiscovery().then(d => {
+        renderCliPills(d);
+        fillPresets(state.agent.cli);
+        updateAgentPreview();
+        $("#agentModal").classList.add("show");
+        $("#agentPrompt").focus();
+      }).catch(e => toast(e.message, true));
+    }
+
+    function closeAgentModal() {
+      $("#agentModal").classList.remove("show");
+      $("#agentFolderBrowser").style.display = "none";
+    }
+
+    function renderCliPills(d) {
+      const host = $("#cliPills");
+      host.innerHTML = d.clis.map(c => {
+        const active = state.agent.cli === c.name ? "active" : "";
+        const disabled = c.available ? "" : "disabled";
+        const dot = c.available ? "dot" : "dot off";
+        return `<button type="button" class="cli-pill ${active}" data-cli="${c.name}" ${disabled}
+          title="${c.available ? (c.path || c.name) : "Not found on PATH"}">
+          <span class="${dot}"></span>${c.name}
+        </button>`;
+      }).join("");
+      host.querySelectorAll(".cli-pill").forEach(btn => {
+        btn.addEventListener("click", () => {
+          if (btn.disabled) return;
+          state.agent.cli = btn.dataset.cli;
+          renderCliPills(d);
+          fillPresets(state.agent.cli);
+          updateAgentPreview();
+        });
+      });
+      // Prefer first available if current unavailable
+      const cur = d.clis.find(c => c.name === state.agent.cli);
+      if (!cur?.available) {
+        const first = d.clis.find(c => c.available);
+        if (first) {
+          state.agent.cli = first.name;
+          renderCliPills(d);
+          fillPresets(state.agent.cli);
+        }
+      }
+    }
+
+    function cliCatalog(cli) {
+      const d = state.discovery;
+      if (!d) return null;
+      // Prefer rich catalogs from live enumeration
+      if (d.models && d.models[cli]) return d.models[cli];
+      // Fallback to flat presets
+      const ids = d.model_presets?.[cli] || [];
+      return {
+        models: ids.map(id => ({ id, label: id, is_default: false })),
+        default_model: ids[0] || null,
+        efforts: d.effort_presets?.[cli] || [],
+        source: "presets",
+      };
+    }
+
+    function fillPresets(cli) {
+      const cat = cliCatalog(cli);
+      const modelSel = $("#agentModel");
+      const effortSel = $("#agentEffort");
+      const src = $("#agentModelSource");
+      if (!modelSel || !effortSel) return;
+
+      const preferred = (state.settings?.default_model || "").trim();
+      const models = cat?.models?.length
+        ? cat.models
+        : [{ id: "", label: "(CLI default)", is_default: true }];
+
+      modelSel.innerHTML = models.map(m => {
+        const id = m.id || m;
+        const label = m.label || id || "(CLI default)";
+        return `<option value="${escapeHtml(id)}">${escapeHtml(label)}</option>`;
+      }).join("");
+
+      // Pick selection: settings default if in list → catalog default → first
+      let pick = "";
+      const ids = models.map(m => m.id || m);
+      if (preferred && ids.includes(preferred)) pick = preferred;
+      else if (cat?.default_model && ids.includes(cat.default_model)) pick = cat.default_model;
+      else {
+        const def = models.find(m => m.is_default);
+        pick = def ? def.id : (ids[0] || "");
+      }
+      modelSel.value = pick;
+
+      const efforts = cat?.efforts?.length
+        ? cat.efforts
+        : ["low", "medium", "high"];
+      const effPreferred = (state.settings?.default_effort || "").trim();
+      effortSel.innerHTML =
+        `<option value="">(default)</option>` +
+        efforts.filter(Boolean).map(e =>
+          `<option value="${escapeHtml(e)}">${escapeHtml(e)}</option>`
+        ).join("");
+      if (effPreferred && efforts.includes(effPreferred)) {
+        effortSel.value = effPreferred;
+      } else {
+        effortSel.value = "";
+      }
+
+      if (src) {
+        const n = models.length;
+        const source = cat?.source || "unknown";
+        src.textContent = `${n} model${n === 1 ? "" : "s"} · ${source}`;
+      }
+      updateAgentPreview();
+    }
+
+    function parseExtraArgs(s) {
+      const out = [];
+      const re = /"([^"]*)"|'([^']*)'|(\S+)/g;
+      let m;
+      while ((m = re.exec(s || "")) !== null) {
+        out.push(m[1] ?? m[2] ?? m[3]);
+      }
+      return out;
+    }
+
+    function updateAgentPreview() {
+      const cli = state.agent.cli;
+      const model = $("#agentModel")?.value?.trim() || "";
+      const effort = $("#agentEffort")?.value?.trim() || "";
+      const runMode = state.agent.runMode || "inapp";
+      // In-app sessions always use headless CLI invocations; external opens interactive TUI
+      const headless = runMode === "inapp";
+      const prompt = $("#agentPrompt")?.value?.trim() || "";
+      const always = $("#agentAlwaysApprove")?.checked;
+      const cwd = $("#agentCwd")?.value?.trim() || state.agent.cwd || "";
+      const parts = runMode === "inapp"
+        ? [`[in-app session]`, `cwd=${cwd || "."}`, cli]
+        : [`cd ${cwd || "."}`, "&&", cli];
+      if (cli === "codex" && headless) parts.push("exec");
+      if (cli === "claude" && headless) parts.push("-p");
+      if (cli === "grok" && headless) parts.push("-p");
+      if (model) parts.push("--model", model);
+      if (effort) {
+        if (cli === "claude") parts.push("--effort", effort);
+        else if (cli === "grok") parts.push("--reasoning-effort", effort);
+        else parts.push("-c", `model_reasoning_effort="${effort}"`);
+      }
+      if (always) {
+        if (cli === "grok") parts.push("--always-approve");
+        else if (cli === "claude") parts.push("--dangerously-skip-permissions");
+      }
+      if (prompt) parts.push(prompt.length > 80 ? prompt.slice(0, 80) + "…" : prompt);
+      const el = $("#agentPreview");
+      if (el) {
+        el.textContent = parts.map(p =>
+          /\s/.test(p) ? `"${p}"` : p
+        ).join(" ");
+      }
+    }
+
+    async function startAgentFromModal() {
+      const btn = $("#agentStart");
+      btn.disabled = true;
+      try {
+        const cwd = $("#agentCwd").value.trim();
+        if (!cwd) {
+          throw new Error("Working directory is required");
+        }
+        const runMode = state.agent.runMode || "inapp";
+        const isOrch = $("#agentOrchestrator")?.checked;
+
+        if (runMode === "external") {
+          const body = {
+            project_id: state.agent.projectId || "",
+            cwd,
+            cli: state.agent.cli,
+            prompt: $("#agentPrompt").value,
+            model: $("#agentModel").value.trim(),
+            effort: $("#agentEffort").value.trim(),
+            mode: "interactive", // external terminal always interactive
+            always_approve: $("#agentAlwaysApprove").checked,
+            name: $("#agentName").value.trim(),
+            extra_args: parseExtraArgs($("#agentExtra").value),
+          };
+          const result = await postJson("/api/agents/start", body);
+          toast(result.message || "External agent started");
+          closeAgentModal();
+          return;
+        }
+
+        // In-app session
+        const body = {
+          project_id: state.agent.projectId || "",
+          cwd,
+          cli: state.agent.cli,
+          prompt: $("#agentPrompt").value,
+          model: $("#agentModel").value.trim(),
+          effort: $("#agentEffort").value.trim(),
+          always_approve: $("#agentAlwaysApprove").checked,
+          name: $("#agentName").value.trim(),
+          role: isOrch ? "orchestrator" : "worker",
+          extra_args: parseExtraArgs($("#agentExtra").value),
+        };
+        // Spawn as child if requested from orchestrator panel
+        let session;
+        if (state.agent.spawnParentId) {
+          session = await postJson(
+            `/api/sessions/${encodeURIComponent(state.agent.spawnParentId)}/spawn`,
+            body
+          );
+          state.agent.spawnParentId = null;
+          toast("Sub-agent spawned");
+        } else {
+          session = await postJson("/api/sessions", body);
+          toast(isOrch ? "Orchestrator session started" : "Agent session started");
+        }
+        closeAgentModal();
+        state.activeSessionId = session.id;
+        showAgents();
+        await selectSession(session.id);
+      } catch (e) {
+        toast(e.message || "Failed to start agent", true);
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    /* ---------- In-app sessions ---------- */
+    async function refreshSessions() {
+      try {
+        const res = await api("/api/sessions");
+        state.sessions = res.sessions || [];
+        if (state.view === "agents") renderAgents();
+      } catch (e) {
+        console.warn("sessions list failed", e);
+      }
+    }
+
+    function connectSessionEvents() {
+      if (state.sessionEs) {
+        try { state.sessionEs.close(); } catch {}
+        state.sessionEs = null;
+      }
+      try {
+        const es = new EventSource("/api/sessions/events");
+        state.sessionEs = es;
+        es.onmessage = (ev) => {
+          try {
+            const data = JSON.parse(ev.data);
+            handleSessionEvent(data);
+          } catch {}
+        };
+        es.onerror = () => {
+          // browser will retry
+        };
+      } catch (e) {
+        console.warn("SSE connect failed", e);
+      }
+    }
+
+    function ensureStreamingBubble() {
+      const log = $("#chatLog");
+      if (!log) return null;
+      let el = document.getElementById("streamingBubble");
+      if (!el) {
+        el = document.createElement("div");
+        el.id = "streamingBubble";
+        el.className = "bubble assistant";
+        el.innerHTML = `<div class="who">assistant <span style="opacity:0.6">(live)</span></div><div class="stream-body"></div>`;
+        log.appendChild(el);
+      }
+      return el.querySelector(".stream-body") || el;
+    }
+
+    function handleSessionEvent(ev) {
+      if (!ev || !ev.type) return;
+      if (ev.type === "snapshot" && ev.session) {
+        const i = state.sessions.findIndex(s => s.id === ev.session.id);
+        if (i >= 0) state.sessions[i] = ev.session;
+        else state.sessions.unshift(ev.session);
+        if (state.view === "agents") renderSessionListOnly();
+        if (state.activeSessionId === ev.session.id && state.sessionDetail) {
+          state.sessionDetail.session = ev.session;
+          renderChatHeader();
+        }
+      } else if (ev.type === "stream_delta" && ev.session_id === state.activeSessionId) {
+        const body = ensureStreamingBubble();
+        if (body) {
+          body.textContent = (body.textContent || "") + (ev.text || "");
+          const log = $("#chatLog");
+          if (log) log.scrollTop = log.scrollHeight;
+        }
+        const el = $("#liveLog");
+        if (el) {
+          el.textContent += ev.text || "";
+          el.scrollTop = el.scrollHeight;
+        }
+      } else if (ev.type === "message" && ev.session_id === state.activeSessionId) {
+        if (state.sessionDetail) {
+          state.sessionDetail.messages = state.sessionDetail.messages || [];
+          state.sessionDetail.messages.push(ev.message);
+          // Replace live bubble with final message
+          const live = document.getElementById("streamingBubble");
+          if (live) live.remove();
+          appendBubble(ev.message);
+        }
+      } else if (ev.type === "log" && ev.session_id === state.activeSessionId) {
+        const el = $("#liveLog");
+        if (el) {
+          el.textContent += `[${ev.stream}] ${ev.text}`;
+          el.scrollTop = el.scrollHeight;
+        }
+        if (state.sessionDetail) {
+          state.sessionDetail.log = (state.sessionDetail.log || "") + `[${ev.stream}] ${ev.text}`;
+        }
+      } else if (ev.type === "status") {
+        const s = state.sessions.find(x => x.id === ev.session_id);
+        if (s) s.status = ev.status;
+        if (state.view === "agents") renderSessionListOnly();
+        if (state.activeSessionId === ev.session_id) {
+          if (state.sessionDetail?.session) state.sessionDetail.session.status = ev.status;
+          renderChatHeader();
+          if (ev.status === "running") {
+            // prepare live bubble for the new turn
+            ensureStreamingBubble();
+          }
+        }
+      } else if (ev.type === "child_spawned") {
+        refreshSessions();
+        toast(`Sub-agent spawned: ${ev.child?.name || ev.child?.id || ""}`);
+      }
+    }
+
+    function showAgents() {
+      state.view = "agents";
+      closeSidebar();
+      refreshSessions().then(() => render());
+      connectSessionEvents();
+    }
+
+    async function selectSession(id) {
+      state.activeSessionId = id;
+      try {
+        state.sessionDetail = await api("/api/sessions/" + encodeURIComponent(id));
+        if (state.view === "agents") renderAgents();
+      } catch (e) {
+        toast(e.message || "Failed to load session", true);
+      }
+    }
+
+    function statusPill(st) {
+      const s = (st || "unknown").toLowerCase();
+      return `<span class="status-pill ${escapeHtml(s)}">${escapeHtml(s)}</span>`;
+    }
+
+    function renderSessionListOnly() {
+      const host = $("#sessionListBody");
+      if (!host) return;
+      const sessions = state.sessions || [];
+      if (!sessions.length) {
+        host.innerHTML = `<div class="empty" style="padding:1.2rem;font-size:0.85rem">No agent sessions yet.<br/>Use ▶ Agent to start one.</div>`;
+        return;
+      }
+      host.innerHTML = sessions.map(s => {
+        const active = s.id === state.activeSessionId ? "active" : "";
+        const role = s.role === "orchestrator" ? " · orch" : "";
+        const indent = s.parent_id ? "↳ " : "";
+        return `
+          <button type="button" class="session-item ${active}" data-sid="${escapeHtml(s.id)}">
+            <div class="s-name">${indent}${escapeHtml(s.name)}</div>
+            <div class="s-meta">
+              ${statusPill(s.status)}
+              <span>${escapeHtml(s.cli)}${role}</span>
+              <span>${escapeHtml((s.cwd || "").split(/[\\/]/).pop() || "")}</span>
+            </div>
+          </button>`;
+      }).join("");
+      host.querySelectorAll(".session-item").forEach(btn => {
+        btn.addEventListener("click", () => selectSession(btn.dataset.sid));
+      });
+    }
+
+    function renderChatHeader() {
+      const h = $("#chatHeader");
+      if (!h || !state.sessionDetail?.session) return;
+      const s = state.sessionDetail.session;
+      const children = (state.sessions || []).filter(x => x.parent_id === s.id);
+      h.innerHTML = `
+        <div>
+          <h3>${escapeHtml(s.name)}</h3>
+          <div class="sub">${escapeHtml(s.cli)} · ${escapeHtml(s.model || "default")} · ${escapeHtml(s.cwd)}</div>
+          <div class="child-row">
+            ${statusPill(s.status)}
+            ${s.role === "orchestrator" ? `<span>orchestrator</span>` : ""}
+            ${children.length ? ` · children: ${children.map(c =>
+              `<button type="button" data-child="${escapeHtml(c.id)}">${escapeHtml(c.name)}</button>`
+            ).join(", ")}` : ""}
+          </div>
+        </div>
+        <div class="actions">
+          ${s.role === "orchestrator" ? `<button type="button" class="btn" id="btnSpawnChild">+ Sub-agent</button>` : ""}
+          <button type="button" class="btn" id="btnStopSession">Stop</button>
+        </div>`;
+      h.querySelectorAll("[data-child]").forEach(b => {
+        b.addEventListener("click", () => selectSession(b.dataset.child));
+      });
+      $("#btnStopSession")?.addEventListener("click", async () => {
+        try {
+          await postJson(`/api/sessions/${encodeURIComponent(s.id)}/stop`, {});
+          toast("Stop requested");
+        } catch (e) { toast(e.message, true); }
+      });
+      $("#btnSpawnChild")?.addEventListener("click", () => {
+        openAgentModal({
+          projectId: null,
+          cwd: s.cwd,
+          prompt: "",
+          name: "sub-agent",
+        });
+        // After start in-app, user can... better: dedicated spawn
+        state.agent.spawnParentId = s.id;
+      });
+    }
+
+    function appendBubble(m) {
+      const log = $("#chatLog");
+      if (!log) return;
+      const div = document.createElement("div");
+      div.className = `bubble ${m.role === "user" ? "user" : m.role === "system" ? "system" : "assistant"}`;
+      div.innerHTML = `<div class="who">${escapeHtml(m.role)}</div>${escapeHtml(m.content)}`;
+      log.appendChild(div);
+      log.scrollTop = log.scrollHeight;
+    }
+
+    function renderAgents() {
+      const sessions = state.sessions || [];
+      const detail = state.sessionDetail;
+      $("#content").innerHTML = `
+        <div class="agents-layout">
+          <div class="session-list">
+            <div class="session-list-header">
+              <span>Sessions (${sessions.length})</span>
+              <button type="button" class="btn small" id="btnNewSession">+ New</button>
+            </div>
+            <div id="sessionListBody"></div>
+          </div>
+          <div class="chat-panel">
+            ${detail?.session ? `
+              <div class="chat-header" id="chatHeader"></div>
+              <div class="chat-log" id="chatLog"></div>
+              <div class="live-log" id="liveLog"></div>
+              <div class="chat-compose">
+                <textarea id="chatInput" placeholder="Message the agent…" ${
+                  detail.session.status === "running" || detail.session.status === "queued"
+                    ? "disabled" : ""
+                }></textarea>
+                <button type="button" class="btn primary" id="btnSendChat">Send</button>
+              </div>
+            ` : `
+              <div class="empty" style="margin:auto;padding:2rem">
+                <h3>Agent workspace</h3>
+                <p>Start an in-app agent or orchestrator. Multiple agents can run at once.</p>
+                <button type="button" class="btn primary" id="btnNewSessionEmpty" style="margin-top:0.75rem">▶ Start agent</button>
+              </div>
+            `}
+          </div>
+        </div>`;
+      renderSessionListOnly();
+      $("#btnNewSession")?.addEventListener("click", () => openAgentModal({ projectId: null }));
+      $("#btnNewSessionEmpty")?.addEventListener("click", () => openAgentModal({ projectId: null }));
+
+      if (detail?.session) {
+        renderChatHeader();
+        const log = $("#chatLog");
+        (detail.messages || []).forEach(m => {
+          const div = document.createElement("div");
+          div.className = `bubble ${m.role === "user" ? "user" : m.role === "system" ? "system" : "assistant"}`;
+          div.innerHTML = `<div class="who">${escapeHtml(m.role)}</div>${escapeHtml(m.content)}`;
+          log.appendChild(div);
+        });
+        log.scrollTop = log.scrollHeight;
+        const live = $("#liveLog");
+        if (live) {
+          // show last part of log
+          const t = detail.log || "";
+          live.textContent = t.length > 8000 ? t.slice(-8000) : t;
+          live.scrollTop = live.scrollHeight;
+        }
+        $("#btnSendChat")?.addEventListener("click", sendChatMessage);
+        $("#chatInput")?.addEventListener("keydown", (e) => {
+          if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            sendChatMessage();
+          }
+        });
+      }
+    }
+
+    async function sendChatMessage() {
+      const input = $("#chatInput");
+      if (!input || !state.activeSessionId) return;
+      const text = input.value.trim();
+      if (!text) return;
+      input.value = "";
+      try {
+        // If we opened modal for spawn from parent, handle via spawn endpoint when flag set
+        if (state.agent.spawnParentId && state.agent.spawnParentId === state.activeSessionId) {
+          // normal message path for active session
+        }
+        await postJson(`/api/sessions/${encodeURIComponent(state.activeSessionId)}/message`, { text });
+      } catch (e) {
+        toast(e.message || "Send failed", true);
+      }
+    }
+
+    function gitChipHtml(g) {
+      if (!g || !g.is_repo) return "";
+      const dirty = g.dirty ? `<span class="gd">dirty</span>` : `<span class="gc">clean</span>`;
+      const branch = g.branch ? `<span class="gb" title="${escapeHtml(g.branch)}">${escapeHtml(g.branch)}</span>` : "";
+      const ab = [];
+      if (g.ahead) ab.push(`↑${g.ahead}`);
+      if (g.behind) ab.push(`↓${g.behind}`);
+      const track = ab.length ? `<span class="gb">${ab.join(" ")}</span>` : "";
+      return `<div class="git-row">${branch}${dirty}${track}</div>`;
+    }
+
+    function gitPanelHtml(p) {
+      const g = p.git;
+      if (!g || !g.is_repo) {
+        return `
+          <div class="git-panel">
+            <div class="git-panel-header">
+              <span class="git-label">Git</span>
+              <span class="git-badge dirty">no repository</span>
+            </div>
+            <div class="git-meta">This project folder is not inside a git worktree.</div>
+            <div class="git-actions">
+              <button type="button" class="btn small" data-action="open-folder">Open folder</button>
+              <button type="button" class="btn small" data-action="open-terminal">Open terminal</button>
+            </div>
+          </div>`;
+      }
+
+      const badges = [];
+      badges.push(g.dirty
+        ? `<span class="git-badge dirty">dirty · ${g.staged}S ${g.unstaged}M ${g.untracked}?</span>`
+        : `<span class="git-badge clean">clean</span>`);
+      if (g.ahead) badges.push(`<span class="git-badge ahead">↑ ${g.ahead} ahead</span>`);
+      if (g.behind) badges.push(`<span class="git-badge behind">↓ ${g.behind} behind</span>`);
+
+      const commit = g.last_commit
+        ? `<div class="git-commit">
+             <div class="subject">${escapeHtml(g.last_commit.subject)}</div>
+             <div class="sub">${escapeHtml(g.last_commit.short_hash)} · ${escapeHtml(g.last_commit.author)} · ${escapeHtml(fmtTime(g.last_commit.date))}</div>
+           </div>`
+        : "";
+
+      const remoteLine = g.remote_url
+        ? `<div><strong>Remote</strong> <span class="mono">${escapeHtml(g.remote_url)}</span></div>`
+        : `<div><strong>Remote</strong> <span class="mono">(none)</span></div>`;
+
+      const upstreamLine = g.upstream
+        ? `<div><strong>Upstream</strong> <span class="mono">${escapeHtml(g.upstream)}</span></div>`
+        : "";
+
+      return `
+        <div class="git-panel" id="gitPanel">
+          <div class="git-panel-header">
+            <span class="git-label">Git</span>
+            <span class="git-branch">${escapeHtml(g.branch || "—")}</span>
+            ${badges.join("")}
+          </div>
+          <div class="git-meta">
+            <div><strong>Root</strong> <span class="mono">${escapeHtml(shortenPath(g.root))}</span></div>
+            ${remoteLine}
+            ${upstreamLine}
+          </div>
+          ${commit}
+          <div class="git-actions">
+            <button type="button" class="btn small primary" data-action="open-folder">Open folder</button>
+            <button type="button" class="btn small" data-action="open-terminal">Terminal</button>
+            ${g.web_url ? `<button type="button" class="btn small" data-action="open-remote">Open remote</button>` : ""}
+            ${g.remote_url ? `<button type="button" class="btn small" data-action="copy-remote">Copy remote</button>` : ""}
+            ${g.web_url ? `<button type="button" class="btn small" data-action="copy-web">Copy URL</button>` : ""}
+            <button type="button" class="btn small" data-action="git-refresh">↻ Git status</button>
+          </div>
+        </div>`;
+    }
+
+    function bindGitActions(projectId) {
+      const panel = $("#gitPanel") || document.querySelector(".git-panel");
+      if (!panel) return;
+      panel.querySelectorAll("[data-action]").forEach(btn => {
+        btn.addEventListener("click", async (e) => {
+          e.preventDefault();
+          const action = btn.dataset.action;
+          const p = state.project;
+          const g = p?.git;
+          try {
+            if (action === "open-folder") {
+              await postJson("/api/actions/open-folder", { project_id: projectId });
+              toast("Opened folder");
+            } else if (action === "open-terminal") {
+              await postJson("/api/actions/open-terminal", { project_id: projectId });
+              toast("Opened terminal");
+            } else if (action === "open-remote") {
+              if (!g?.web_url) return;
+              await postJson("/api/actions/open-url", { url: g.web_url });
+              toast("Opened remote in browser");
+            } else if (action === "copy-remote") {
+              if (!g?.remote_url) return;
+              await navigator.clipboard.writeText(g.remote_url);
+              toast("Remote URL copied");
+            } else if (action === "copy-web") {
+              if (!g?.web_url) return;
+              await navigator.clipboard.writeText(g.web_url);
+              toast("Web URL copied");
+            } else if (action === "git-refresh") {
+              btn.disabled = true;
+              const fresh = await postJson("/api/git/refresh", { project_id: projectId });
+              if (state.project && state.projectId === projectId) {
+                state.project.git = fresh;
+                // also update global summary if present
+                const sum = state.data?.projects?.find(x => x.id === projectId);
+                if (sum) {
+                  sum.git = {
+                    is_repo: true,
+                    branch: fresh.branch,
+                    dirty: fresh.dirty,
+                    ahead: fresh.ahead,
+                    behind: fresh.behind,
+                    web_url: fresh.web_url,
+                  };
+                }
+              }
+              render();
+              toast("Git status refreshed");
+            }
+          } catch (err) {
+            toast(err.message || "Action failed", true);
+          } finally {
+            btn.disabled = false;
+          }
+        });
+      });
+    }
+
+    /* ---------- Sidebar ---------- */
+    function renderSidebar() {
+      const list = $("#projectList");
+      if (!state.data) { list.innerHTML = ""; return; }
+
+      const filter = state.projectFilter.trim().toLowerCase();
+      const projects = state.data.projects.filter(p => {
+        if (!filter) return true;
+        return p.name.toLowerCase().includes(filter) || p.id.toLowerCase().includes(filter);
+      });
+
+      if (!projects.length) {
+        list.innerHTML = `<div class="empty" style="padding:1.5rem 0.5rem"><p>No matching projects</p></div>`;
+        return;
+      }
+
+      list.innerHTML = projects.map(p => {
+        const active = state.view === "project" && state.projectId === p.id ? "active" : "";
+        const badgeClass = p.open === 0 ? "badge zero" : "badge";
+        const gitDot = p.git?.is_repo
+          ? `<span class="sidebar-git-dot ${p.git.dirty ? "dirty" : ""}" title="${escapeHtml((p.git.branch || "git") + (p.git.dirty ? " (dirty)" : " (clean)"))}"></span>`
+          : "";
+        return `
+          <button type="button" class="project-item ${active}" data-id="${escapeHtml(p.id)}" title="${escapeHtml(p.id)}">
+            ${gitDot}
+            <span class="name">${escapeHtml(p.name)}</span>
+            <span class="${badgeClass}">${p.open}</span>
+          </button>`;
+      }).join("");
+
+      list.querySelectorAll(".project-item").forEach(btn => {
+        btn.addEventListener("click", () => selectProject(btn.dataset.id));
+      });
+    }
+
+    /* ---------- Views ---------- */
+    function render() {
+      if (!state.data && state.view !== "settings" && state.view !== "agents") return;
+      if (state.data) {
+        $("#rootPath").textContent = shortenPath(state.data.root);
+        $("#scannedAt").textContent = fmtTime(state.data.scanned_at);
+      }
+      renderSidebar();
+      updateToggle();
+
+      if (state.view === "settings") {
+        $("#pageTitle").textContent = "Settings";
+        $("#pageSubtitle").textContent = "Dashboard preferences and repos root";
+        renderSettings();
+      } else if (state.view === "agents") {
+        const n = (state.sessions || []).filter(s => s.status === "running" || s.status === "queued").length;
+        $("#pageTitle").textContent = "Agents";
+        $("#pageSubtitle").textContent = n ? `${n} running · interact in-app` : "In-app multi-agent sessions";
+        renderAgents();
+      } else if (state.view === "global") {
+        $("#pageTitle").textContent = "Global overview";
+        const gitN = state.data.git_repo_count ?? 0;
+        $("#pageSubtitle").textContent = `${state.data.total_open} open · ${state.data.project_count} projects · ${gitN} with git`;
+        renderGlobal();
+      } else {
+        const p = state.project;
+        if (!p) {
+          $("#content").innerHTML = `<div class="loading">Loading project…</div>`;
+          return;
+        }
+        $("#pageTitle").textContent = p.name;
+        const branch = p.git?.branch ? ` · ${p.git.branch}` : "";
+        const dirty = p.git?.dirty ? " · dirty" : (p.git?.is_repo ? " · clean" : "");
+        $("#pageSubtitle").textContent = `${p.open} open · ${p.done} done${branch}${dirty}`;
+        renderProject();
+      }
+      $("#btnShowDone").textContent = state.showDone ? "Hide done" : "Show done";
+    }
+
+    function updateToggle() {
+      $("#btnGlobal").classList.toggle("active", state.view === "global");
+      $("#btnProject").classList.toggle("active", state.view === "project");
+      $("#btnAgents")?.classList.toggle("active", state.view === "agents");
+      $("#btnSettings").classList.toggle("active", state.view === "settings");
+    }
+
+    function showSettings() {
+      state.view = "settings";
+      closeSidebar();
+      loadSettings()
+        .then(() => render())
+        .catch(e => {
+          $("#content").innerHTML = `<div class="error">${escapeHtml(e.message)}</div>`;
+        });
+    }
+
+    function renderSettings() {
+      const s = state.settings || {};
+      $("#content").innerHTML = `
+        <div class="settings-card">
+          <h3>Repos root</h3>
+          <div class="form-field full">
+            <label for="setRoot">Root folder (scanned for TODO.md files)</label>
+            <div class="path-row">
+              <input id="setRoot" type="text" value="${escapeHtml(s.root || "")}" spellcheck="false" />
+              <button type="button" class="btn" id="browseRoot">Browse…</button>
+            </div>
+            <div class="hint">Changing this rescans immediately. Config is saved to todo-dashboard.config.json.</div>
+          </div>
+        </div>
+        <div class="settings-card">
+          <h3>Agent defaults</h3>
+          <div class="form-grid">
+            <div class="form-field">
+              <label for="setDefaultCli">Default CLI</label>
+              <select id="setDefaultCli">
+                <option value="grok" ${s.default_cli === "grok" ? "selected" : ""}>Grok</option>
+                <option value="claude" ${s.default_cli === "claude" ? "selected" : ""}>Claude</option>
+                <option value="codex" ${s.default_cli === "codex" ? "selected" : ""}>Codex</option>
+              </select>
+            </div>
+            <div class="form-field">
+              <label for="setDefaultModel">Default model</label>
+              <input id="setDefaultModel" value="${escapeHtml(s.default_model || "")}" placeholder="e.g. sonnet" />
+            </div>
+            <div class="form-field">
+              <label for="setDefaultEffort">Default effort</label>
+              <input id="setDefaultEffort" value="${escapeHtml(s.default_effort || "")}" placeholder="e.g. high" />
+            </div>
+            <div class="form-field full">
+              <label for="setDefaultAgentCwd">Default agent cwd (global Run Agent)</label>
+              <div class="path-row">
+                <input id="setDefaultAgentCwd" value="${escapeHtml(s.default_agent_cwd || "")}" placeholder="Leave empty to use repos root" spellcheck="false" />
+                <button type="button" class="btn" id="browseAgentCwdDefault">Browse…</button>
+              </div>
+              <div class="hint">When empty, global Agent uses the repos root folder.</div>
+            </div>
+            <div class="form-field full">
+              <label class="form-check" style="text-transform:none;letter-spacing:0;font-weight:500">
+                <input type="checkbox" id="setAlwaysApprove" ${s.default_always_approve ? "checked" : ""} />
+                Default: auto-approve tools / skip permission prompts
+              </label>
+            </div>
+          </div>
+        </div>
+        <div class="settings-card">
+          <h3>UI &amp; scanning</h3>
+          <div class="form-grid">
+            <div class="form-field">
+              <label for="setItemStatus">Default todo filter</label>
+              <select id="setItemStatus">
+                <option value="open" ${s.default_item_status === "open" ? "selected" : ""}>Open</option>
+                <option value="done" ${s.default_item_status === "done" ? "selected" : ""}>Done</option>
+                <option value="all" ${s.default_item_status === "all" ? "selected" : ""}>All</option>
+              </select>
+            </div>
+            <div class="form-field">
+              <label for="setHealthPoll">Health poll (seconds)</label>
+              <input id="setHealthPoll" type="number" min="5" max="300" value="${Number(s.health_poll_seconds) || 15}" />
+            </div>
+            <div class="form-field">
+              <label for="setAutoRefresh">Auto-refresh (minutes, 0=off)</label>
+              <input id="setAutoRefresh" type="number" min="0" max="1440" value="${Number(s.auto_refresh_minutes) || 0}" />
+            </div>
+            <div class="form-field full">
+              <label class="form-check" style="text-transform:none;letter-spacing:0;font-weight:500">
+                <input type="checkbox" id="setOpenBrowser" ${s.open_browser_on_start !== false ? "checked" : ""} />
+                Open browser when server starts
+              </label>
+            </div>
+          </div>
+        </div>
+        <div style="display:flex;gap:0.5rem;flex-wrap:wrap;max-width:720px">
+          <button type="button" class="btn primary" id="btnSaveSettings">Save settings</button>
+          <button type="button" class="btn" id="btnReloadSettings">Reload</button>
+        </div>
+      `;
+
+      $("#browseRoot")?.addEventListener("click", () => {
+        openFolderModal({
+          target: "settings-root",
+          startPath: $("#setRoot").value || s.root,
+          title: "Choose repos root folder",
+        });
+      });
+      $("#browseAgentCwdDefault")?.addEventListener("click", () => {
+        openFolderModal({
+          target: "settings-agent-cwd",
+          startPath: $("#setDefaultAgentCwd").value || s.root,
+          title: "Choose default agent working directory",
+        });
+      });
+      $("#btnSaveSettings")?.addEventListener("click", saveSettingsFromForm);
+      $("#btnReloadSettings")?.addEventListener("click", () => {
+        loadSettings().then(() => { toast("Reloaded"); render(); }).catch(e => toast(e.message, true));
+      });
+    }
+
+    async function saveSettingsFromForm() {
+      const body = {
+        root: $("#setRoot").value.trim(),
+        default_cli: $("#setDefaultCli").value,
+        default_mode: "interactive", // kept for config compat; run mode replaces UI choice
+        default_model: $("#setDefaultModel").value.trim(),
+        default_effort: $("#setDefaultEffort").value.trim(),
+        default_agent_cwd: $("#setDefaultAgentCwd").value.trim(),
+        default_always_approve: $("#setAlwaysApprove").checked,
+        default_item_status: $("#setItemStatus").value,
+        health_poll_seconds: Number($("#setHealthPoll").value) || 15,
+        auto_refresh_minutes: Number($("#setAutoRefresh").value) || 0,
+        open_browser_on_start: $("#setOpenBrowser").checked,
+      };
+      try {
+        const res = await api("/api/settings", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+          timeoutMs: 180000,
+        });
+        state.settings = res.settings;
+        if (res.global) state.data = res.global;
+        applySettingsToUiDefaults();
+        setupAutoRefresh();
+        toast(res.root_changed ? "Saved — root changed, rescan complete" : "Settings saved");
+        if (res.root_changed) {
+          state.project = null;
+          state.projectId = null;
+          state.view = "global";
+        }
+        render();
+      } catch (e) {
+        toast(e.message || "Save failed", true);
+      }
+    }
+
+    function shortenPath(p) {
+      if (!p) return "";
+      return p.replace(/^C:\\Users\\[^\\]+\\/i, "~/").replace(/\\/g, "/");
+    }
+
+
+
+    function statsHtml(open, done, total, extra) {
+      const p = pctDone(done, total);
+      return `
+        <div class="stats">
+          <div class="stat-card open">
+            <div class="label">Open</div>
+            <div class="value">${open}</div>
+          </div>
+          <div class="stat-card done">
+            <div class="label">Done</div>
+            <div class="value">${done}</div>
+            <div class="progress-bar"><span style="width:${p}%"></span></div>
+          </div>
+          <div class="stat-card">
+            <div class="label">Total items</div>
+            <div class="value">${total}</div>
+          </div>
+          ${extra || ""}
+        </div>`;
+    }
+
+    function toolbarHtml() {
+      return `
+        <div class="toolbar">
+          <button type="button" class="filter-chip ${state.itemStatus === "open" ? "active" : ""}" data-status="open">Open</button>
+          <button type="button" class="filter-chip ${state.itemStatus === "done" ? "active" : ""}" data-status="done">Done</button>
+          <button type="button" class="filter-chip ${state.itemStatus === "all" ? "active" : ""}" data-status="all">All</button>
+          <div class="spacer"></div>
+          <input id="itemSearch" type="search" placeholder="Filter items…" value="${escapeHtml(state.itemFilter)}" autocomplete="off" />
+        </div>`;
+    }
+
+    function bindToolbar() {
+      document.querySelectorAll(".filter-chip").forEach(btn => {
+        btn.addEventListener("click", () => {
+          state.itemStatus = btn.dataset.status;
+          render();
+        });
+      });
+      const inp = $("#itemSearch");
+      if (inp) {
+        inp.addEventListener("input", () => {
+          state.itemFilter = inp.value;
+          // Debounce re-render of list only via full render (fine at this scale)
+          render();
+          const again = $("#itemSearch");
+          if (again) { again.focus(); again.setSelectionRange(again.value.length, again.value.length); }
+        });
+      }
+    }
+
+    function renderGlobal() {
+      const d = state.data;
+      const sorted = [...d.projects].sort((a, b) => b.open - a.open || a.name.localeCompare(b.name));
+
+      let items = d.open_items;
+      if (state.showDone || state.itemStatus === "done" || state.itemStatus === "all") {
+        // For global we only have open_items in payload; showDone expands project cards focus
+      }
+      if (state.itemStatus === "done") {
+        items = []; // open_items are open-only; done shown per-project
+      }
+      items = items.filter(i => matchesFilter(i.text + " " + i.project_name + " " + (i.section || ""), state.itemFilter));
+
+      const projectCards = sorted.map(p => {
+        const pct = pctDone(p.done, p.total);
+        return `
+          <button type="button" class="proj-card" data-id="${escapeHtml(p.id)}">
+            <h3>${escapeHtml(p.name)}</h3>
+            <div class="counts">
+              <span><strong class="open">${p.open}</strong> open</span>
+              <span><strong class="done">${p.done}</strong> done</span>
+              <span>${p.total} total</span>
+            </div>
+            ${gitChipHtml(p.git)}
+            <div class="mini-bar"><span style="width:${pct}%"></span></div>
+          </button>`;
+      }).join("");
+
+      const todoHtml = items.length
+        ? items.map(i => `
+            <div class="todo-item" data-project="${escapeHtml(i.project_id)}" data-line="${i.line}" data-done="false">
+              <div class="check" title="Mark complete" role="checkbox" aria-checked="false"></div>
+              <div>
+                <div class="todo-text">${escapeHtml(i.text)}</div>
+                <div class="todo-meta">
+                  <span class="pill project" data-id="${escapeHtml(i.project_id)}">${escapeHtml(i.project_name)}</span>
+                  ${i.section ? `<span class="pill section">${escapeHtml(i.section)}</span>` : ""}
+                </div>
+              </div>
+              <div class="todo-actions">
+                <button type="button" class="icon-btn" data-agent-todo title="Start agent on this todo">▶</button>
+                <span class="line-num">L${i.line}</span>
+              </div>
+            </div>`).join("")
+        : `<div class="empty"><h3>No open items</h3><p>Either everything is done, or filters hid them.</p></div>`;
+
+      $("#content").innerHTML = `
+        ${statsHtml(d.total_open, d.total_done, d.total_items, `
+          <div class="stat-card projects">
+            <div class="label">Projects</div>
+            <div class="value">${d.project_count}</div>
+          </div>
+          <div class="stat-card">
+            <div class="label">Git repos</div>
+            <div class="value" style="color:var(--git)">${d.git_repo_count ?? 0}</div>
+          </div>`)}
+        <div class="section-label">Projects</div>
+        <div class="project-grid">${projectCards}</div>
+        <div class="section-label">Open todos (all projects)</div>
+        ${toolbarHtml()}
+        <div class="todo-list">${todoHtml}</div>
+      `;
+
+      document.querySelectorAll(".proj-card").forEach(el => {
+        el.addEventListener("click", () => selectProject(el.dataset.id));
+      });
+      document.querySelectorAll(".pill.project").forEach(el => {
+        el.addEventListener("click", (e) => {
+          e.stopPropagation();
+          selectProject(el.dataset.id);
+        });
+      });
+      bindTodoInteractions();
+      bindToolbar();
+    }
+
+    function renderProject() {
+      const p = state.project;
+      let items = p.items;
+      if (state.itemStatus === "open") items = items.filter(i => !i.done);
+      else if (state.itemStatus === "done") items = items.filter(i => i.done);
+      // showDone forces all if itemStatus is open? keep itemStatus as source of truth
+      if (state.showDone && state.itemStatus === "open") {
+        // button still useful as quick toggle
+      }
+      items = items.filter(i => matchesFilter(i.text + " " + (i.section || ""), state.itemFilter));
+
+      // Group by section
+      const groups = new Map();
+      for (const item of items) {
+        const key = item.section || "General";
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(item);
+      }
+
+      let listHtml = "";
+      if (!items.length) {
+        listHtml = `<div class="empty"><h3>No items match</h3><p>Try a different filter or refresh.</p></div>`;
+      } else {
+        for (const [section, group] of groups) {
+          listHtml += `<div class="section-label">${escapeHtml(section)}</div><div class="todo-list">`;
+          listHtml += group.map(i => `
+            <div class="todo-item ${i.done ? "done" : ""}" data-project="${escapeHtml(p.id)}" data-line="${i.line}" data-done="${i.done}">
+              <div class="check" title="${i.done ? "Mark incomplete" : "Mark complete"}" role="checkbox" aria-checked="${i.done}"></div>
+              <div>
+                <div class="todo-text">${escapeHtml(i.text)}</div>
+              </div>
+              <div class="todo-actions">
+                <button type="button" class="icon-btn" data-agent-todo title="Start agent on this todo">▶</button>
+                <span class="line-num">L${i.line}</span>
+              </div>
+            </div>`).join("");
+          listHtml += `</div>`;
+        }
+      }
+
+      $("#content").innerHTML = `
+        ${statsHtml(p.open, p.done, p.total)}
+        ${gitPanelHtml(p)}
+        ${toolbarHtml()}
+        ${listHtml}
+      `;
+      bindToolbar();
+      bindGitActions(p.id);
+      bindTodoInteractions();
+    }
+
+    function bindTodoInteractions() {
+      document.querySelectorAll(".todo-item .check").forEach(el => {
+        el.addEventListener("click", async (e) => {
+          e.stopPropagation();
+          const row = el.closest(".todo-item");
+          if (!row || row.classList.contains("busy")) return;
+          const projectId = row.dataset.project;
+          const line = Number(row.dataset.line);
+          const currentlyDone = row.dataset.done === "true";
+          const nextDone = !currentlyDone;
+          row.classList.add("busy");
+          try {
+            await toggleTodo(projectId, line, nextDone);
+            toast(nextDone ? "Marked complete" : "Marked incomplete");
+            render();
+          } catch (err) {
+            toast(err.message || "Toggle failed", true);
+            row.classList.remove("busy");
+          }
+        });
+      });
+      document.querySelectorAll("[data-agent-todo]").forEach(btn => {
+        btn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          const row = btn.closest(".todo-item");
+          if (!row) return;
+          const text = row.querySelector(".todo-text")?.textContent || "";
+          const projectId = row.dataset.project;
+          openAgentModal({
+            projectId,
+            prompt: `Complete this TODO in the project:\n\n- ${text}\n\nWork in this repository, implement the change, and leave the tree in a good state.`,
+            name: text.slice(0, 40),
+          });
+        });
+      });
+    }
+
+    /* ---------- Navigation ---------- */
+    function projectApiUrl(id) {
+      // Query param avoids path-encoding issues with spaces / nested ids
+      return "/api/project?id=" + encodeURIComponent(id);
+    }
+
+    async function selectProject(id) {
+      state.view = "project";
+      state.projectId = id;
+      state.project = null;
+      state.itemFilter = "";
+      state.itemStatus = "open";
+      closeSidebar();
+      render();
+      try {
+        console.info("[todo-dashboard] loading project", id);
+        state.project = await api(projectApiUrl(id));
+        console.info("[todo-dashboard] loaded project", id, {
+          open: state.project.open,
+          items: state.project.items?.length,
+        });
+      } catch (e) {
+        console.error("[todo-dashboard] load project failed", id, e);
+        $("#content").innerHTML = `
+          <div class="error">
+            <strong>Failed to load project</strong><br/>
+            ${escapeHtml(e.message)}<br/>
+            <span style="color:var(--text-dim);font-size:0.8rem">id: ${escapeHtml(id)}</span>
+          </div>
+          <div style="margin-top:0.75rem;display:flex;gap:0.5rem;flex-wrap:wrap">
+            <button type="button" class="btn primary" id="btnRetryProject">Retry</button>
+            <button type="button" class="btn" id="btnBackGlobal">Back to global</button>
+          </div>`;
+        $("#btnRetryProject")?.addEventListener("click", () => selectProject(id));
+        $("#btnBackGlobal")?.addEventListener("click", showGlobal);
+        return;
+      }
+      render();
+    }
+
+    function showGlobal() {
+      state.view = "global";
+      state.projectId = null;
+      state.project = null;
+      state.itemFilter = "";
+      state.itemStatus = state.settings?.default_item_status || "open";
+      closeSidebar();
+      render();
+    }
+
+    async function load() {
+      try {
+        console.info("[todo-dashboard] loading global");
+        state.data = await api("/api/global");
+        if (state.view === "project" && state.projectId) {
+          await selectProject(state.projectId);
+        } else {
+          render();
+        }
+      } catch (e) {
+        console.error("[todo-dashboard] initial load failed", e);
+        $("#content").innerHTML = `
+          <div class="error"><strong>Failed to load</strong><br/>${escapeHtml(e.message)}</div>
+          <div style="margin-top:0.75rem">
+            <button type="button" class="btn primary" id="btnRetryLoad">Retry</button>
+          </div>`;
+        $("#btnRetryLoad")?.addEventListener("click", load);
+      }
+    }
+
+    async function refresh() {
+      const btn = $("#btnRefresh");
+      btn.disabled = true;
+      btn.innerHTML = `<span class="spin">↻</span> Scanning…`;
+      try {
+        state.data = await api("/api/refresh", { method: "POST", timeoutMs: 180000 });
+        if (state.view === "project" && state.projectId) {
+          try {
+            state.project = await api(projectApiUrl(state.projectId));
+          } catch (e) {
+            console.warn("[todo-dashboard] project reload after refresh failed", e);
+            toast(e.message || "Could not reload project", true);
+            showGlobal();
+          }
+        }
+        render();
+        toast("Scan complete");
+      } catch (e) {
+        console.error("[todo-dashboard] refresh failed", e);
+        $("#content").insertAdjacentHTML("afterbegin",
+          `<div class="error">Refresh failed: ${escapeHtml(e.message)}</div>`);
+        toast(e.message || "Refresh failed", true);
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = "↻ Refresh";
+      }
+    }
+
+    /* ---------- Mobile sidebar ---------- */
+    function openSidebar() {
+      $("#sidebar").classList.add("open");
+      $("#backdrop").classList.add("show");
+    }
+    function closeSidebar() {
+      $("#sidebar").classList.remove("open");
+      $("#backdrop").classList.remove("show");
+    }
+
+    /* ---------- Events ---------- */
+    $("#btnGlobal").addEventListener("click", showGlobal);
+    $("#btnProject").addEventListener("click", () => {
+      if (state.projectId) selectProject(state.projectId);
+      else if (state.data?.projects?.length) selectProject(state.data.projects[0].id);
+    });
+    $("#btnSettings").addEventListener("click", showSettings);
+    $("#btnAgents")?.addEventListener("click", showAgents);
+    $("#btnRefresh").addEventListener("click", refresh);
+    $("#btnAgent").addEventListener("click", () => {
+      if (state.view === "project" && state.projectId) {
+        openAgentModal({ projectId: state.projectId });
+      } else {
+        // Global overview: default cwd = repos root (no project required)
+        openAgentModal({ projectId: null });
+      }
+    });
+    $("#agentBrowseCwd")?.addEventListener("click", () => {
+      const start = $("#agentCwd").value.trim() || state.agent.defaultCwd || state.data?.root || "";
+      const host = $("#agentFolderBrowser");
+      if (host.style.display === "block") {
+        host.style.display = "none";
+        return;
+      }
+      renderFolderBrowser(host, start, (path) => {
+        $("#agentCwd").value = path;
+        state.agent.cwd = path;
+        updateAgentPreview();
+      });
+    });
+    $("#agentResetCwd")?.addEventListener("click", () => {
+      $("#agentCwd").value = state.agent.defaultCwd || defaultAgentCwd(state.agent.projectId);
+      state.agent.cwd = $("#agentCwd").value;
+      $("#agentFolderBrowser").style.display = "none";
+      updateAgentPreview();
+    });
+    $("#agentCwd")?.addEventListener("input", updateAgentPreview);
+    $("#folderModalCancel")?.addEventListener("click", closeFolderModal);
+    $("#folderModalSelect")?.addEventListener("click", () => {
+      const path = state.folderPicker.path;
+      if (!path || path === "Drives") {
+        toast("Select a folder first", true);
+        return;
+      }
+      if (state.folderPicker.target === "settings-root") {
+        $("#setRoot").value = path;
+      } else if (state.folderPicker.target === "settings-agent-cwd") {
+        $("#setDefaultAgentCwd").value = path;
+      } else if (state.folderPicker.target === "agent") {
+        $("#agentCwd").value = path;
+        state.agent.cwd = path;
+        updateAgentPreview();
+      }
+      closeFolderModal();
+    });
+    $("#folderModal")?.addEventListener("click", (e) => {
+      if (e.target === $("#folderModal")) closeFolderModal();
+    });
+    $("#btnShowDone").addEventListener("click", () => {
+      state.showDone = !state.showDone;
+      if (state.showDone) state.itemStatus = "all";
+      else state.itemStatus = "open";
+      render();
+    });
+    $("#projectSearch").addEventListener("input", (e) => {
+      state.projectFilter = e.target.value;
+      renderSidebar();
+    });
+    $("#menuBtn").addEventListener("click", openSidebar);
+    $("#backdrop").addEventListener("click", closeSidebar);
+    $("#btnRetryConn")?.addEventListener("click", async () => {
+      const ok = await checkHealth();
+      if (ok) {
+        toast("Server is back");
+        load();
+      } else {
+        toast("Still unreachable", true);
+      }
+    });
+
+    $("#agentCancel").addEventListener("click", closeAgentModal);
+    $("#agentStart").addEventListener("click", startAgentFromModal);
+    $("#agentModal").addEventListener("click", (e) => {
+      if (e.target === $("#agentModal")) closeAgentModal();
+    });
+    ["agentModel", "agentEffort", "agentPrompt", "agentAlwaysApprove", "agentExtra"].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener("input", updateAgentPreview);
+      if (el) el.addEventListener("change", updateAgentPreview);
+    });
+
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        if ($("#agentModal").classList.contains("show")) {
+          closeAgentModal();
+          return;
+        }
+        if (e.target.matches("input, textarea")) {
+          e.target.blur();
+          return;
+        }
+        closeSidebar();
+        return;
+      }
+      if (e.target.matches("input, textarea, select")) {
+        return;
+      }
+      if (e.key === "/") {
+        e.preventDefault();
+        $("#projectSearch").focus();
+      } else if (e.key === "r" || e.key === "R") {
+        refresh();
+      } else if (e.key === "g") {
+        showGlobal();
+      } else if (e.key === "a") {
+        if (state.view === "project" && state.projectId) openAgentModal({ projectId: state.projectId });
+        else openAgentModal({ projectId: null });
+      } else if (e.key === ",") {
+        showSettings();
+      }
+    });
+
+    load();
+    loadSettings().catch((e) => console.warn("[todo-dashboard] settings load failed", e));
+    ensureDiscovery().catch((e) => console.warn("[todo-dashboard] discover failed", e));
+    connectSessionEvents();
+    refreshSessions().catch(() => {});
+
+    /* ---------- Live usage meters ---------- */
+    function usageFillClass(pct, severity, hasMeter) {
+      if (!hasMeter) return "u-fill unknown";
+      const sev = (severity || "").toLowerCase();
+      if (sev === "hard" || sev === "critical") return "u-fill hard";
+      if (sev === "hot" || (pct != null && pct >= 85)) return "u-fill hot";
+      if (sev === "warn" || sev === "warning" || (pct != null && pct >= 60)) return "u-fill warn";
+      return "u-fill";
+    }
+
+    /** Seconds until reset for a window (prefer absolute resets_at so client can tick). */
+    function winResetSeconds(w) {
+      if (w && w.resets_at) {
+        const t = Date.parse(w.resets_at);
+        if (!Number.isNaN(t)) return Math.max(0, Math.floor((t - Date.now()) / 1000));
+      }
+      if (w && w.resets_in_seconds != null && !Number.isNaN(w.resets_in_seconds)) {
+        return Math.max(0, Math.floor(w.resets_in_seconds));
+      }
+      return null;
+    }
+
+    /** Compact countdown: 5d 9h · 2h 55m · 12m · 45s · now */
+    function fmtResetTimer(secs) {
+      if (secs == null) return { text: "—", cls: "empty" };
+      if (secs <= 0) return { text: "now", cls: "now" };
+      const d = Math.floor(secs / 86400);
+      const h = Math.floor((secs % 86400) / 3600);
+      const m = Math.floor((secs % 3600) / 60);
+      const s = secs % 60;
+      let text;
+      if (d >= 2) text = h > 0 ? `${d}d ${h}h` : `${d}d`;
+      else if (d === 1) text = h > 0 ? `1d ${h}h` : "1d";
+      else if (h > 0) text = m > 0 ? `${h}h ${m}m` : `${h}h`;
+      else if (m > 0) text = `${m}m`;
+      else text = `${s}s`;
+      const cls = secs <= 900 ? "soon" : ""; // < 15m
+      return { text, cls };
+    }
+
+    function renderUsageWindows(m) {
+      const wins = Array.isArray(m.windows) ? m.windows : [];
+      if (wins.length > 0) {
+        return `<div class="u-windows">${wins.map(w => {
+          const used = w.used_percent;
+          const has = used != null && !Number.isNaN(used);
+          const pct = has ? Math.max(0, Math.min(100, used)) : null;
+          const fill = usageFillClass(pct, w.severity, has);
+          const kindTag = (w.kind === "soft" || w.kind === "hard")
+            ? `<span class="tag">${escapeHtml(w.kind)}</span>` : "";
+          const resetSecs = winResetSeconds(w);
+          const timer = fmtResetTimer(resetSecs);
+          const resetAtAbs = w.resets_at
+            ? new Date(w.resets_at).toLocaleString()
+            : (resetSecs != null ? `in ${timer.text}` : "unknown");
+          const tipParts = [];
+          if (w.kind) tipParts.push(`${w.kind} limit`);
+          if (w.detail) tipParts.push(w.detail);
+          tipParts.push(`resets ${resetAtAbs}`);
+          const title = tipParts.join(" · ");
+          const pctTxt = has ? `${Math.round(pct)}%` : (w.detail ? "·" : "—");
+          return `<div class="u-win" title="${escapeHtml(title)}" data-resets-at="${escapeHtml(w.resets_at || "")}" data-resets-in="${resetSecs != null ? resetSecs : ""}">
+            <span class="u-win-label">${escapeHtml(w.label || w.id)}${kindTag}</span>
+            <div class="u-track"><div class="${fill}" style="width:${has ? pct : 100}%"></div></div>
+            <span class="u-win-pct">${escapeHtml(String(pctTxt))}</span>
+            <span class="u-win-reset ${timer.cls}" data-role="reset-timer">${escapeHtml(timer.text)}</span>
+          </div>`;
+        }).join("")}</div>`;
+      }
+      // Fallback single bar (older payload) — still show meter-level reset if present
+      const used = m.used_percent;
+      const hasMeter = used != null && !Number.isNaN(used);
+      const pct = hasMeter ? Math.max(0, Math.min(100, used)) : null;
+      const resetSecs = winResetSeconds(m);
+      const timer = fmtResetTimer(resetSecs);
+      return `<div class="u-windows"><div class="u-win" data-resets-at="${escapeHtml(m.resets_at || "")}">
+        <span class="u-win-label">usage</span>
+        <div class="u-track"><div class="${usageFillClass(pct, null, hasMeter)}" style="width:${hasMeter ? pct : 100}%"></div></div>
+        <span class="u-win-pct">${hasMeter ? Math.round(pct) + "%" : "—"}</span>
+        <span class="u-win-reset ${timer.cls}" data-role="reset-timer">${escapeHtml(timer.text)}</span>
+      </div></div>`;
+    }
+
+    function renderUsageMeters(snap) {
+      const bar = $("#usageBar");
+      if (!bar || !snap?.meters) return;
+      bar.innerHTML = snap.meters.map(m => {
+        const hasMeter = (Array.isArray(m.windows) && m.windows.some(w => w.used_percent != null))
+          || (m.used_percent != null && !Number.isNaN(m.used_percent));
+        const offline = !m.logged_in || (!!m.error && !hasMeter);
+        const dot = m.error && !hasMeter ? "err" : (m.logged_in ? "" : "off");
+        const plan = m.plan || m.account || "";
+        const bits = [];
+        if (m.detail) bits.push(escapeHtml(m.detail));
+        if (m.error && hasMeter) bits.push(`<span class="err">${escapeHtml(m.error)}</span>`);
+        else if (m.error && !hasMeter) bits.push(`<span class="err">${escapeHtml(m.error)}</span>`);
+        if (!bits.length && m.secondary_label) bits.push(escapeHtml(m.secondary_label));
+        return `
+          <div class="usage-card ${offline ? "offline" : ""}" data-id="${escapeHtml(m.id)}" title="${escapeHtml(m.source || m.id)}">
+            <div class="u-top">
+              <span class="usage-dot ${dot}"></span>
+              <span class="u-name">${escapeHtml(m.label)}</span>
+              <span class="u-plan">${escapeHtml(plan)}</span>
+            </div>
+            ${renderUsageWindows(m)}
+            <div class="u-meta">${bits.join(" · ") || escapeHtml(m.primary_label || "—")}</div>
+          </div>`;
+      }).join("");
+    }
+
+    /** Tick visible reset countdowns every second between usage polls. */
+    function tickUsageResetTimers() {
+      document.querySelectorAll(".u-win[data-resets-at], .u-win[data-resets-in]").forEach(row => {
+        const el = row.querySelector('[data-role="reset-timer"]');
+        if (!el) return;
+        const at = row.getAttribute("data-resets-at");
+        let secs = null;
+        if (at) {
+          const t = Date.parse(at);
+          if (!Number.isNaN(t)) secs = Math.max(0, Math.floor((t - Date.now()) / 1000));
+        }
+        if (secs == null) {
+          const raw = row.getAttribute("data-resets-in");
+          if (raw !== "" && raw != null) {
+            // Approximate from last render stamp stored on element
+            const base = Number(raw);
+            const stamped = Number(row.dataset.resetStamp || 0);
+            if (!Number.isNaN(base)) {
+              const elapsed = stamped ? Math.floor((Date.now() - stamped) / 1000) : 0;
+              secs = Math.max(0, base - elapsed);
+            }
+          }
+        }
+        const timer = fmtResetTimer(secs);
+        el.textContent = timer.text;
+        el.className = `u-win-reset ${timer.cls}`;
+      });
+    }
+
+    async function pollUsage() {
+      try {
+        const snap = await api("/api/usage", { timeoutMs: 20000 });
+        state.usage = snap;
+        // Stamp relative-only windows so tick can count down without resets_at
+        renderUsageMeters(snap);
+        document.querySelectorAll(".u-win[data-resets-in]").forEach(row => {
+          row.dataset.resetStamp = String(Date.now());
+        });
+      } catch (e) {
+        console.warn("usage poll failed", e);
+      }
+    }
+
+    // 60s — Claude's oauth/usage is rate-limited if polled too often (30s was 429ing).
+    pollUsage();
+    setInterval(pollUsage, 60000);
+    setInterval(tickUsageResetTimers, 1000);
+
+    // Poll health so the banner appears if the server dies mid-session
+    setInterval(() => { checkHealth().catch(() => {}); }, Math.max(5, state.healthPollSeconds || 15) * 1000);
+  </script>
+</body>
+</html>

@@ -1,0 +1,25 @@
+# Build
+/target/
+**/*.pdb
+
+# Local runtime
+todo-dashboard.log
+todo-dashboard.pid
+todo-dashboard.config.json
+*.log
+
+# Local MCP dumps / scratch (not part of the app)
+/mcps/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*~
+
+# Env / secrets
+.env
+.env.*
+*.pem
