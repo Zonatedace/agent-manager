@@ -2,13 +2,13 @@
 name = "agent-manager"
 version = "0.1.0"
 edition = "2021"
-description = "Local Windows dashboard for TODO.md across repos — git, multi-agent sessions, usage meters"
+description = "Agent Manager - Windows desktop app for multi-repo TODO.md, git, multi-agent sessions, usage meters"
 authors = ["Brandon"]
 repository = "https://github.com/Zonatedace/agent-manager"
 homepage = "https://github.com/Zonatedace/agent-manager"
 readme = "README.md"
 license = "MIT"
-keywords = ["todo", "dashboard", "desktop", "windows", "agents"]
+keywords = ["todo", "agents", "desktop", "windows", "rust"]
 categories = ["gui", "development-tools"]
 
 [[bin]]
