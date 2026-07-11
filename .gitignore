@@ -23,3 +23,9 @@ Thumbs.db
 .env
 .env.*
 *.pem
+
+# Legacy names
+todo-dashboard.log
+todo-dashboard.pid
+todo-dashboard.config.json
+
