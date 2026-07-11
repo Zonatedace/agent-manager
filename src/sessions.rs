@@ -768,7 +768,7 @@ fn preview(s: &str) -> String {
 }
 
 fn orchestrator_system_prompt() -> String {
-    r#"You are an orchestrator agent running inside TODO Dashboard.
+    r#"You are an orchestrator agent running inside Agent Manager.
 Your job is to break goals into parallel workstreams and spawn sub-agents.
 
 When you want to spawn one or more sub-agents, include a fenced JSON block exactly like:

@@ -2,8 +2,8 @@
 # No Task Scheduler. For k8s/container, use the image entrypoint instead.
 $ErrorActionPreference = "SilentlyContinue"
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
-$exe = Join-Path $here "target\release\todo-dashboard.exe"
-$log = Join-Path $here "todo-dashboard.log"
+$exe = Join-Path $here "target\release\agent-manager.exe"
+$log = Join-Path $here "agent-manager.log"
 
 function Test-Up {
     try {

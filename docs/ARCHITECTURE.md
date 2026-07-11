@@ -8,7 +8,7 @@ Local **Rust / Axum** process serving a single-page dashboard and JSON APIs. No 
 
 ```text
 ┌─────────────────────────────────────┐
-│  todo-dashboard.exe                 │
+│  agent-manager.exe                 │
 │  ┌──────────────┐   ┌─────────────┐ │
 │  │ WebView2     │──►│ Axum :7878  │ │
 │  │ (tao + wry)  │   │ loopback    │ │
@@ -21,7 +21,7 @@ Local **Rust / Axum** process serving a single-page dashboard and JSON APIs. No 
 - Main thread: native window (`src/desktop.rs`, WebView2).
 - Background Tokio runtime: HTTP API + sessions.
 - Closing the window exits the process.
-- Release builds use `windows_subsystem = "windows"` (no console); logs still go to `todo-dashboard.log`.
+- Release builds use `windows_subsystem = "windows"` (no console); logs still go to `agent-manager.log`.
 
 ### Server mode (`--mode server`)
 
@@ -29,8 +29,8 @@ Same Axum stack without a window; optional external browser via `open`.
 
 - **UI**: `static/index.html` embedded at compile time (`include_str!`). Rebuild after HTML changes.
 - **API**: Axum routes in `src/server.rs`.
-- **Config**: `todo-dashboard.config.json` (settings API) + CLI flags (`--root`, `--port`, …).
-- **Logs**: `todo-dashboard.log`.
+- **Config**: `agent-manager.config.json` (settings API) + CLI flags (`--root`, `--port`, …).
+- **Logs**: `agent-manager.log`.
 
 ### Dev process management (Windows)
 
@@ -84,7 +84,7 @@ Blocking collectors in `usage.rs` run under `spawn_blocking` for `GET /api/usage
 
 ```powershell
 cargo build --release
-# binary: target\release\todo-dashboard.exe
+# binary: target\release\agent-manager.exe
 ```
 
 HTML and server code ship in one binary; `cargo build` is required after `static/` edits.

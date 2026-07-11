@@ -1,6 +1,6 @@
-# TODO — todo-dashboard
+# TODO — agent-manager
 
-Local backlog for the TODO Dashboard. Checked items are done; open items are still planned.
+Local backlog for the Agent Manager. Checked items are done; open items are still planned.
 
 ## Usage meters (Claude / Grok / Codex)
 
@@ -49,7 +49,7 @@ Local backlog for the TODO Dashboard. Checked items are done; open items are sti
 ## Reliability
 
 - [x] Detached agent spawn so starting an agent does not kill the dashboard process
-- [x] Panic catch on HTTP layer + logging to `todo-dashboard.log`
+- [x] Panic catch on HTTP layer + logging to `agent-manager.log`
 - [ ] Graceful shutdown + drain active sessions
 - [ ] Integration smoke test script (`ensure-running` + `/api/health` + `/api/usage`)
 

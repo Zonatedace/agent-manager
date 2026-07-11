@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>TODO Dashboard</title>
+  <title>Agent Manager</title>
   <style>
     :root {
       --bg: #0c0f14;
@@ -1386,11 +1386,11 @@
 <body>
   <div class="toast" id="toast"></div>
   <div class="app-chrome" id="appChrome">
-    <a class="brand" href="/" title="TODO Dashboard">TODO Dashboard<span>local</span></a>
+    <a class="brand" href="/" title="Agent Manager">Agent Manager<span>local</span></a>
     <div class="chrome-spacer"></div>
     <a class="github-link"
        id="githubLink"
-       href="https://github.com/Zonatedace/todo-dashboard"
+       href="https://github.com/Zonatedace/agent-manager"
        target="_blank"
        rel="noopener noreferrer"
        title="Open source on GitHub">
@@ -1407,7 +1407,7 @@
     </a>
   </div>
   <div class="conn-banner" id="connBanner">
-    <span><span class="conn-dot down"></span>Server unreachable — start todo-dashboard or click Retry</span>
+    <span><span class="conn-dot down"></span>Server unreachable — start agent-manager or click Retry</span>
     <button type="button" class="btn" id="btnRetryConn">Retry</button>
   </div>
   <div class="usage-bar" id="usageBar" title="Live agent usage (polls every 60s; server caches + backs off on 429)">
@@ -1502,7 +1502,7 @@
         <div class="brand">
           <div class="brand-mark">TD</div>
           <div>
-            <h1>TODO Dashboard</h1>
+            <h1>Agent Manager</h1>
             <span id="rootPath">scanning…</span>
           </div>
         </div>
@@ -1637,8 +1637,8 @@
         if (e instanceof TypeError || /Failed to fetch|NetworkError|Load failed/i.test(e.message || "")) {
           setServerOnline(false);
           throw new Error(
-            `Cannot reach server at ${location.origin} — is todo-dashboard running? ` +
-            `Try: start.ps1 or target\\release\\todo-dashboard.exe`
+            `Cannot reach server at ${location.origin} — is agent-manager running? ` +
+            `Try: start.ps1 or target\\release\\agent-manager.exe`
           );
         }
         throw e;
@@ -2685,7 +2685,7 @@
               <input id="setRoot" type="text" value="${escapeHtml(s.root || "")}" spellcheck="false" />
               <button type="button" class="btn" id="browseRoot">Browse…</button>
             </div>
-            <div class="hint">Changing this rescans immediately. Config is saved to todo-dashboard.config.json.</div>
+            <div class="hint">Changing this rescans immediately. Config is saved to agent-manager.config.json.</div>
           </div>
         </div>
         <div class="settings-card">
@@ -3050,14 +3050,14 @@
       closeSidebar();
       render();
       try {
-        console.info("[todo-dashboard] loading project", id);
+        console.info("[agent-manager] loading project", id);
         state.project = await api(projectApiUrl(id));
-        console.info("[todo-dashboard] loaded project", id, {
+        console.info("[agent-manager] loaded project", id, {
           open: state.project.open,
           items: state.project.items?.length,
         });
       } catch (e) {
-        console.error("[todo-dashboard] load project failed", id, e);
+        console.error("[agent-manager] load project failed", id, e);
         $("#content").innerHTML = `
           <div class="error">
             <strong>Failed to load project</strong><br/>
@@ -3087,7 +3087,7 @@
 
     async function load() {
       try {
-        console.info("[todo-dashboard] loading global");
+        console.info("[agent-manager] loading global");
         state.data = await api("/api/global");
         if (state.view === "project" && state.projectId) {
           await selectProject(state.projectId);
@@ -3095,7 +3095,7 @@
           render();
         }
       } catch (e) {
-        console.error("[todo-dashboard] initial load failed", e);
+        console.error("[agent-manager] initial load failed", e);
         $("#content").innerHTML = `
           <div class="error"><strong>Failed to load</strong><br/>${escapeHtml(e.message)}</div>
           <div style="margin-top:0.75rem">
@@ -3115,7 +3115,7 @@
           try {
             state.project = await api(projectApiUrl(state.projectId));
           } catch (e) {
-            console.warn("[todo-dashboard] project reload after refresh failed", e);
+            console.warn("[agent-manager] project reload after refresh failed", e);
             toast(e.message || "Could not reload project", true);
             showGlobal();
           }
@@ -3123,7 +3123,7 @@
         render();
         toast("Scan complete");
       } catch (e) {
-        console.error("[todo-dashboard] refresh failed", e);
+        console.error("[agent-manager] refresh failed", e);
         $("#content").insertAdjacentHTML("afterbegin",
           `<div class="error">Refresh failed: ${escapeHtml(e.message)}</div>`);
         toast(e.message || "Refresh failed", true);
@@ -3266,8 +3266,8 @@
     });
 
     load();
-    loadSettings().catch((e) => console.warn("[todo-dashboard] settings load failed", e));
-    ensureDiscovery().catch((e) => console.warn("[todo-dashboard] discover failed", e));
+    loadSettings().catch((e) => console.warn("[agent-manager] settings load failed", e));
+    ensureDiscovery().catch((e) => console.warn("[agent-manager] discover failed", e));
     connectSessionEvents();
     refreshSessions().catch(() => {});
 

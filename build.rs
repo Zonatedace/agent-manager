@@ -5,9 +5,9 @@ fn main() {
     #[cfg(windows)]
     {
         let mut res = winres::WindowsResource::new();
-        res.set("ProductName", "TODO Dashboard");
-        res.set("FileDescription", "TODO Dashboard — local multi-repo TODO + agent shell");
-        res.set("LegalCopyright", "Copyright (c) the TODO Dashboard contributors");
+        res.set("ProductName", "Agent Manager");
+        res.set("FileDescription", "Agent Manager — local multi-repo TODO + agent shell");
+        res.set("LegalCopyright", "Copyright (c) the Agent Manager contributors");
         res.set("CompanyName", "Zonatedace");
         // Optional icon
         let ico = std::path::Path::new("assets/icon.ico");

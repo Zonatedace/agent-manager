@@ -31,8 +31,8 @@ enum RunMode {
 
 #[derive(Parser, Debug)]
 #[command(
-    name = "todo-dashboard",
-    about = "TODO Dashboard — local multi-repo TODO app with agents and usage meters",
+    name = "agent-manager",
+    about = "Agent Manager — local multi-repo TODO app with agents and usage meters",
     long_about = "Windows desktop app (WebView2) by default. Use --mode server for headless HTTP only."
 )]
 struct Args {
@@ -69,15 +69,15 @@ struct Args {
     no_open: bool,
 
     /// Log file path
-    #[arg(long, default_value = "todo-dashboard.log")]
+    #[arg(long, default_value = "agent-manager.log")]
     log_file: PathBuf,
 
-    /// Log level filter (e.g. info, debug, todo_dashboard=debug)
+    /// Log level filter (e.g. info, debug, agent_manager=debug)
     #[arg(long, default_value = "info")]
     log_level: String,
 
     /// Path to settings JSON
-    #[arg(long, default_value = "todo-dashboard.config.json")]
+    #[arg(long, default_value = "agent-manager.config.json")]
     config: PathBuf,
 
     /// Ignore saved config root and force this root
@@ -115,7 +115,7 @@ fn init_logging(
             std::fs::OpenOptions::new()
                 .create(true)
                 .append(true)
-                .open("todo-dashboard.log")
+                .open("agent-manager.log")
                 .expect("could not open fallback log file")
         });
 
@@ -173,11 +173,42 @@ fn attach_console_if_requested(requested: bool) {
 #[cfg(not(windows))]
 fn attach_console_if_requested(_requested: bool) {}
 
+/// Prefer agent-manager.config.json; migrate from legacy todo-dashboard.config.json if needed.
+fn resolve_config_path(configured: PathBuf) -> PathBuf {
+    if configured.exists() {
+        return configured;
+    }
+    // Default path missing — try legacy name next to it
+    if let Some(parent) = configured.parent() {
+        let legacy = parent.join("todo-dashboard.config.json");
+        if legacy.exists() {
+            let target = if configured.file_name().is_some() {
+                configured.clone()
+            } else {
+                parent.join("agent-manager.config.json")
+            };
+            match std::fs::copy(&legacy, &target) {
+                Ok(_) => {
+                    eprintln!(
+                        "Migrated settings {} → {}",
+                        legacy.display(),
+                        target.display()
+                    );
+                    return target;
+                }
+                Err(_) => return legacy,
+            }
+        }
+    }
+    configured
+}
+
 fn main() {
     let mut args = Args::parse();
     if args.server {
         args.mode = RunMode::Server;
     }
+    args.config = resolve_config_path(args.config);
 
     attach_console_if_requested(args.console);
 
@@ -210,7 +241,7 @@ fn main() {
         ?args.mode,
         log_file = %args.log_file.display(),
         config = %args.config.display(),
-        "starting todo-dashboard"
+        "starting Agent Manager"
     );
 
     let root_path = settings.root_path();
@@ -284,11 +315,11 @@ fn main() {
     match args.mode {
         RunMode::App => {
             if want_stdout {
-                println!("TODO Dashboard (desktop) → {url}");
+                println!("Agent Manager (desktop) → {url}");
                 println!("Logs: {}", args.log_file.display());
             }
             // Block until window closes
-            if let Err(e) = desktop::run_main_window(&url, "TODO Dashboard") {
+            if let Err(e) = desktop::run_main_window(&url, "Agent Manager") {
                 error!(error = %e, "desktop window failed");
                 eprintln!("{e}");
                 // Fall back to server + browser so the user is not stuck

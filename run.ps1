@@ -1,12 +1,12 @@
-# Launch TODO Dashboard as a Windows app (native WebView2 window).
+# Launch Agent Manager as a Windows app (native WebView2 window).
 # For HTTP-only mode: .\run.ps1 --server
 $ErrorActionPreference = "Stop"
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $here
 $env:Path = "$env:USERPROFILE\.cargo\bin;" + $env:Path
 
-$exe = Join-Path $here "target\release\todo-dashboard.exe"
-$log = Join-Path $here "todo-dashboard.log"
+$exe = Join-Path $here "target\release\agent-manager.exe"
+$log = Join-Path $here "agent-manager.log"
 
 if ($args -contains "--build" -or -not (Test-Path $exe)) {
     Write-Host "Building release..."
@@ -26,7 +26,7 @@ foreach ($a in $args) {
     $pass += $a
 }
 
-Write-Host "Starting TODO Dashboard..."
+Write-Host "Starting Agent Manager..."
 Write-Host "  log: $log"
 if ($pass -contains "server") {
     Write-Host "  mode: server  http://127.0.0.1:7878/"

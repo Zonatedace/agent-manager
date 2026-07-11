@@ -1,10 +1,10 @@
-# TODO Dashboard
+# Agent Manager
 
-[![GitHub](https://img.shields.io/badge/GitHub-Zonatedace%2Ftodo--dashboard-181717?logo=github)](https://github.com/Zonatedace/todo-dashboard)
+[![GitHub](https://img.shields.io/badge/GitHub-Zonatedace%2Fagent--manager-181717?logo=github)](https://github.com/Zonatedace/agent-manager)
 
-**Repository:** https://github.com/Zonatedace/todo-dashboard
+**Repository:** https://github.com/Zonatedace/agent-manager
 
-**Windows desktop app** (native window via WebView2) for `TODO.md` across your repos: global and per-project views, git actions, in-app multi-agent sessions, and live **Claude / Grok / Codex** usage meters.
+Formerly **todo-dashboard**. **Windows desktop app** (native window via WebView2) for `TODO.md` across your repos: global and per-project views, git actions, in-app multi-agent sessions, and live **Claude / Grok / Codex** usage meters.
 
 Default scan root: your projects folder (configurable). The UI runs in an OS window; a local HTTP API still listens on `http://127.0.0.1:7878/` for health checks and tooling.
 
@@ -54,11 +54,11 @@ Details: **[docs/USAGE.md](docs/USAGE.md)** · architecture: **[docs/ARCHITECTUR
 ### Install shortcuts (Start Menu + Desktop)
 
 ```powershell
-cd todo-dashboard
+cd agent-manager
 .\install-desktop.ps1
 ```
 
-Then launch **TODO Dashboard** from the Start Menu or Desktop. Closes when you close the window.
+Then launch **Agent Manager** from the Start Menu or Desktop. Closes when you close the window.
 
 ### Dev / rebuild
 
@@ -76,23 +76,23 @@ Useful for scripting, remote access over loopback, or containers later:
 ```powershell
 .\run.ps1 --server
 # or
-todo-dashboard.exe --mode server
-todo-dashboard.exe --mode server --no-open
+agent-manager.exe --mode server
+agent-manager.exe --mode server --no-open
 ```
 
 ### CLI options
 
 ```text
-todo-dashboard --mode app              # native window (default on Windows)
-todo-dashboard --mode server           # HTTP only
-todo-dashboard --server                # alias for --mode server
-todo-dashboard --console               # attach console on GUI builds
-todo-dashboard --root "D:\Repos" --port 7878
-todo-dashboard --log-file todo-dashboard.log --log-level info
+agent-manager --mode app              # native window (default on Windows)
+agent-manager --mode server           # HTTP only
+agent-manager --server                # alias for --mode server
+agent-manager --console               # attach console on GUI builds
+agent-manager --root "D:\Repos" --port 7878
+agent-manager --log-file agent-manager.log --log-level info
 ```
 
 > After editing `static/index.html`, rebuild — the UI is embedded in the binary.
-> Logs always go to `todo-dashboard.log` (GUI builds hide the console unless `--console`).
+> Logs always go to `agent-manager.log` (GUI builds hide the console unless `--console`).
 
 ## API (selected)
 
@@ -122,7 +122,7 @@ todo-dashboard --log-file todo-dashboard.log --log-level info
 ## Project layout
 
 ```text
-todo-dashboard/
+agent-manager/
   Cargo.toml
   README.md
   TODO.md                 # backlog (this repo)

@@ -3,9 +3,9 @@
 **/*.pdb
 
 # Local runtime
-todo-dashboard.log
-todo-dashboard.pid
-todo-dashboard.config.json
+agent-manager.log
+agent-manager.pid
+agent-manager.config.json
 *.log
 
 # Local MCP dumps / scratch (not part of the app)

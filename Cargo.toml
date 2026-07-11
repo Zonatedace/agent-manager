@@ -1,18 +1,18 @@
 [package]
-name = "todo-dashboard"
+name = "agent-manager"
 version = "0.1.0"
 edition = "2021"
 description = "Local Windows dashboard for TODO.md across repos — git, multi-agent sessions, usage meters"
 authors = ["Brandon"]
-repository = "https://github.com/Zonatedace/todo-dashboard"
-homepage = "https://github.com/Zonatedace/todo-dashboard"
+repository = "https://github.com/Zonatedace/agent-manager"
+homepage = "https://github.com/Zonatedace/agent-manager"
 readme = "README.md"
 license = "MIT"
 keywords = ["todo", "dashboard", "desktop", "windows", "agents"]
 categories = ["gui", "development-tools"]
 
 [[bin]]
-name = "todo-dashboard"
+name = "agent-manager"
 path = "src/main.rs"
 
 [dependencies]

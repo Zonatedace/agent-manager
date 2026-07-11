@@ -9,6 +9,34 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa"
 
 [[package]]
+name = "agent-manager"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "chrono",
+ "clap",
+ "futures",
+ "open",
+ "rayon",
+ "regex",
+ "serde",
+ "serde_json",
+ "tao",
+ "tokio",
+ "tokio-stream",
+ "tower",
+ "tower-http",
+ "tracing",
+ "tracing-appender",
+ "tracing-subscriber",
+ "ureq",
+ "uuid",
+ "walkdir",
+ "winres",
+ "wry",
+]
+
+[[package]]
 name = "aho-corasick"
 version = "1.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2768,34 +2796,6 @@ checksum = "c8323304221c2a851516f22236c5722a72eaa19749016521d6dff0824447d96d"
 dependencies = [
  "displaydoc",
  "zerovec",
-]
-
-[[package]]
-name = "todo-dashboard"
-version = "0.1.0"
-dependencies = [
- "axum",
- "chrono",
- "clap",
- "futures",
- "open",
- "rayon",
- "regex",
- "serde",
- "serde_json",
- "tao",
- "tokio",
- "tokio-stream",
- "tower",
- "tower-http",
- "tracing",
- "tracing-appender",
- "tracing-subscriber",
- "ureq",
- "uuid",
- "walkdir",
- "winres",
- "wry",
 ]
 
 [[package]]

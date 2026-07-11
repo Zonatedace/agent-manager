@@ -1,4 +1,4 @@
-# Rebuild + restart TODO Dashboard (Windows app by default).
+# Rebuild + restart Agent Manager (Windows app by default).
 #   .\restart.ps1
 #   .\restart.ps1 --no-build
 #   .\restart.ps1 --server          # headless HTTP instead of window
@@ -7,13 +7,13 @@ $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $here
 $env:Path = "$env:USERPROFILE\.cargo\bin;" + $env:Path
 
-$exe = Join-Path $here "target\release\todo-dashboard.exe"
-$log = Join-Path $here "todo-dashboard.log"
+$exe = Join-Path $here "target\release\agent-manager.exe"
+$log = Join-Path $here "agent-manager.log"
 $doBuild = -not ($args -contains "--no-build")
 $serverMode = $args -contains "--server"
 
-Write-Host "Stopping any running todo-dashboard..."
-Get-Process -Name "todo-dashboard" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+Write-Host "Stopping any running agent-manager..."
+Get-Process -Name "agent-manager" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 Start-Sleep -Milliseconds 400
 
 if ($doBuild) {

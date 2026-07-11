@@ -1,16 +1,16 @@
-# Start TODO Dashboard minimized in the background (survives closing this shell).
+# Start Agent Manager minimized in the background (survives closing this shell).
 $ErrorActionPreference = "Stop"
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
-$exe = Join-Path $here "target\release\todo-dashboard.exe"
-$log = Join-Path $here "todo-dashboard.log"
-$pidFile = Join-Path $here "todo-dashboard.pid"
+$exe = Join-Path $here "target\release\agent-manager.exe"
+$log = Join-Path $here "agent-manager.log"
+$pidFile = Join-Path $here "agent-manager.pid"
 
 if (-not (Test-Path $exe)) {
     Write-Error "Missing $exe — run: cargo build --release"
     exit 1
 }
 
-Get-Process -Name "todo-dashboard" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+Get-Process -Name "agent-manager" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 Start-Sleep -Milliseconds 400
 
 # Launch as a separate process with its own console (minimized)

@@ -1,12 +1,12 @@
-# Start TODO Dashboard and keep it running.
+# Start Agent Manager and keep it running.
 # Prefer: double-click this file, or: powershell -File start.ps1
 $ErrorActionPreference = "Stop"
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $here
 
-$exe = Join-Path $here "target\release\todo-dashboard.exe"
-$log = Join-Path $here "todo-dashboard.log"
-$pidFile = Join-Path $here "todo-dashboard.pid"
+$exe = Join-Path $here "target\release\agent-manager.exe"
+$log = Join-Path $here "agent-manager.log"
+$pidFile = Join-Path $here "agent-manager.pid"
 
 if (-not (Test-Path $exe)) {
     Write-Host "Building release binary (first time)..."
@@ -25,15 +25,15 @@ if (Test-Path $pidFile) {
         Stop-Process -Id $old -Force -ErrorAction SilentlyContinue
     }
 }
-Get-Process -Name "todo-dashboard" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+Get-Process -Name "agent-manager" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 Start-Sleep -Milliseconds 400
 
 Write-Host ""
-Write-Host "  TODO Dashboard"
+Write-Host "  Agent Manager"
 Write-Host "  --------------"
 Write-Host "  URL:    http://127.0.0.1:7878/"
 Write-Host "  Log:    $log"
-Write-Host "  Config: $(Join-Path $here 'todo-dashboard.config.json')"
+Write-Host "  Config: $(Join-Path $here 'agent-manager.config.json')"
 Write-Host ""
 Write-Host "  Leave this window open while using the dashboard."
 Write-Host "  Press Ctrl+C to stop the server."

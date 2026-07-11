@@ -858,7 +858,7 @@ fn fetch_codex() -> UsageMeter {
     let mut headers = vec![
         ("Authorization", format!("Bearer {token}")),
         ("Accept", "application/json".into()),
-        ("User-Agent", "todo-dashboard".into()),
+        ("User-Agent", "agent-manager".into()),
     ];
     if !account_id.is_empty() {
         headers.push(("ChatGPT-Account-Id", account_id.to_string()));

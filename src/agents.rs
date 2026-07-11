@@ -902,7 +902,7 @@ fn write_agent_script(
         .collect::<String>();
     let stamp = chrono::Local::now().format("%Y%m%d-%H%M%S-%3f");
     let path = std::env::temp_dir().join(format!(
-        "todo-dashboard-agent-{}-{}.ps1",
+        "agent-manager-agent-{}-{}.ps1",
         cli.as_str(),
         stamp
     ));
@@ -919,7 +919,7 @@ fn write_agent_script(
     ));
     lines.push(format!(
         "Write-Host {} -ForegroundColor Cyan",
-        quote_ps(&format!("todo-dashboard → starting {} in {}", cli.as_str(), cwd.display()))
+        quote_ps(&format!("agent-manager → starting {} in {}", cli.as_str(), cwd.display()))
     ));
     // Prefer PATH resolution inside the new shell
     let mut invoke = format!("& {}", quote_ps(cli.as_str()));
@@ -1079,7 +1079,7 @@ pub fn start_agent(
             })
         }
         AgentMode::Headless => {
-            let log_dir = cwd.join(".todo-dashboard-logs");
+            let log_dir = cwd.join(".agent-manager-logs");
             let log_path = launch_headless(cli, &args, cwd, &log_dir)?;
             Ok(LaunchResult {
                 ok: true,
