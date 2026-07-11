@@ -2,8 +2,18 @@
 name = "todo-dashboard"
 version = "0.1.0"
 edition = "2021"
-description = "Local dashboard for scanning and browsing TODO.md files across project repos"
+description = "Local Windows dashboard for TODO.md across repos — git, multi-agent sessions, usage meters"
 authors = ["Brandon"]
+repository = "https://github.com/Zonatedace/todo-dashboard"
+homepage = "https://github.com/Zonatedace/todo-dashboard"
+readme = "README.md"
+license = "MIT"
+keywords = ["todo", "dashboard", "desktop", "windows", "agents"]
+categories = ["gui", "development-tools"]
+
+[[bin]]
+name = "todo-dashboard"
+path = "src/main.rs"
 
 [dependencies]
 axum = "0.8"
@@ -25,6 +35,13 @@ uuid = { version = "1", features = ["v4", "serde"] }
 futures = "0.3"
 tokio-stream = { version = "0.1", features = ["sync"] }
 ureq = { version = "2", features = ["json"] }
+
+# Native Windows desktop shell (WebView2)
+tao = "0.32"
+wry = "0.50"
+
+[build-dependencies]
+winres = "0.1"
 
 [profile.release]
 lto = true

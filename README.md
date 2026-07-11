@@ -4,9 +4,9 @@
 
 **Repository:** https://github.com/Zonatedace/todo-dashboard
 
-Local **Rust** web dashboard for `TODO.md` files under your project repos: global and per-project views, git actions, in-app multi-agent sessions, and live **Claude / Grok / Codex** usage meters.
+**Windows desktop app** (native window via WebView2) for `TODO.md` across your repos: global and per-project views, git actions, in-app multi-agent sessions, and live **Claude / Grok / Codex** usage meters.
 
-Default scan root: your projects folder (configurable). UI: http://127.0.0.1:7878/
+Default scan root: your projects folder (configurable). The UI runs in an OS window; a local HTTP API still listens on `http://127.0.0.1:7878/` for health checks and tooling.
 
 ## Features
 
@@ -44,40 +44,55 @@ Details: **[docs/USAGE.md](docs/USAGE.md)** · architecture: **[docs/ARCHITECTUR
 
 ## Requirements
 
-- [Rust](https://rustup.rs/) 1.75+
+- Windows 10/11 with **Microsoft Edge WebView2 Runtime** (usually preinstalled)
+- [Rust](https://rustup.rs/) 1.75+ to build
 - Optional: `claude`, `grok`, `codex` CLIs on `PATH` (agents + usage meters)
-- Windows scripts assume PowerShell
+- PowerShell for helper scripts
 
-## Run
+## Run (Windows app)
 
-### Foreground (dev)
+### Install shortcuts (Start Menu + Desktop)
 
 ```powershell
 cd todo-dashboard
-.\run.ps1              # build if needed, run in this window
-# or
-cargo run --release
+.\install-desktop.ps1
 ```
 
-### Rebuild & restart (detached, no Task Scheduler)
+Then launch **TODO Dashboard** from the Start Menu or Desktop. Closes when you close the window.
+
+### Dev / rebuild
 
 ```powershell
-.\restart.ps1          # cargo build --release + WMI-detached start
+.\run.ps1                 # build if needed, open desktop window
+.\restart.ps1             # rebuild + restart detached
 .\restart.ps1 --no-build
-.\ensure-running.ps1   # start only if /api/health is down
+cargo run --release       # desktop window (default on Windows)
 ```
 
-Opens (or serves) **http://127.0.0.1:7878/**
+### Server-only mode (no window)
+
+Useful for scripting, remote access over loopback, or containers later:
+
+```powershell
+.\run.ps1 --server
+# or
+todo-dashboard.exe --mode server
+todo-dashboard.exe --mode server --no-open
+```
 
 ### CLI options
 
 ```text
-todo-dashboard --root "C:\Users\Brandon\Desktop\Repos" --port 7878
-todo-dashboard --no-open
+todo-dashboard --mode app              # native window (default on Windows)
+todo-dashboard --mode server           # HTTP only
+todo-dashboard --server                # alias for --mode server
+todo-dashboard --console               # attach console on GUI builds
+todo-dashboard --root "D:\Repos" --port 7878
 todo-dashboard --log-file todo-dashboard.log --log-level info
 ```
 
-> After editing `static/index.html`, rebuild (`cargo build --release` / `restart.ps1`) — the UI is embedded in the binary.
+> After editing `static/index.html`, rebuild — the UI is embedded in the binary.
+> Logs always go to `todo-dashboard.log` (GUI builds hide the console unless `--console`).
 
 ## API (selected)
 

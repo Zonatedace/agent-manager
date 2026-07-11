@@ -1,14 +1,16 @@
-# Rebuild + restart for local dev (no Task Scheduler).
-# Usage:
-#   .\restart.ps1           # rebuild release, restart
-#   .\restart.ps1 --no-build  # just restart existing binary
+# Rebuild + restart TODO Dashboard (Windows app by default).
+#   .\restart.ps1
+#   .\restart.ps1 --no-build
+#   .\restart.ps1 --server          # headless HTTP instead of window
 $ErrorActionPreference = "Stop"
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $here
+$env:Path = "$env:USERPROFILE\.cargo\bin;" + $env:Path
 
 $exe = Join-Path $here "target\release\todo-dashboard.exe"
 $log = Join-Path $here "todo-dashboard.log"
 $doBuild = -not ($args -contains "--no-build")
+$serverMode = $args -contains "--server"
 
 Write-Host "Stopping any running todo-dashboard..."
 Get-Process -Name "todo-dashboard" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
@@ -25,9 +27,20 @@ if (-not (Test-Path $exe)) {
     exit 1
 }
 
-# Start detached from this script so restart.ps1 can exit,
-# but NOT via schtasks. Parent is WMI/Win32_Process (survives this shell).
-$cmd = '"' + $exe + '" --port 7878 --no-open --log-file "' + $log + '" --log-level info'
+$argList = @(
+    "--port", "7878",
+    "--log-file", $log,
+    "--log-level", "info"
+)
+if ($serverMode) {
+    $argList = @("--mode", "server", "--no-open") + $argList
+}
+
+# Detached start via WMI so this script can exit (survives shell close).
+$cmd = '"' + $exe + '" ' + ($argList | ForEach-Object {
+    if ($_ -match '\s') { '"' + $_ + '"' } else { $_ }
+}) -join ' '
+
 $res = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{
     CommandLine      = $cmd
     CurrentDirectory = $here
@@ -35,19 +48,21 @@ $res = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @
 
 if ($null -eq $res -or $res.ReturnValue -ne 0) {
     Write-Host "WMI start failed (code $($res.ReturnValue)); trying Start-Process..."
-    Start-Process -FilePath $exe -ArgumentList @(
-        "--port", "7878", "--no-open", "--log-file", $log, "--log-level", "info"
-    ) -WorkingDirectory $here -WindowStyle Hidden
+    Start-Process -FilePath $exe -ArgumentList $argList -WorkingDirectory $here
 } else {
     Write-Host "Started pid $($res.ProcessId)"
 }
 
-for ($i = 0; $i -lt 40; $i++) {
+for ($i = 0; $i -lt 50; $i++) {
     Start-Sleep -Milliseconds 400
     try {
         $h = Invoke-RestMethod "http://127.0.0.1:7878/api/health" -TimeoutSec 2
         if ($h.ok) {
-            Write-Host "UP  http://127.0.0.1:7878/  projects=$($h.projects) open=$($h.open)"
+            if ($serverMode) {
+                Write-Host "UP  http://127.0.0.1:7878/  (server mode) projects=$($h.projects) open=$($h.open)"
+            } else {
+                Write-Host "UP  desktop app + http://127.0.0.1:7878/  projects=$($h.projects) open=$($h.open)"
+            }
             exit 0
         }
     } catch {}

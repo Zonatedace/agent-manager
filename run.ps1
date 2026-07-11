@@ -1,20 +1,17 @@
-# Dev runner: rebuild (if needed) and run the dashboard in THIS window.
-# Keep the window open while you use the UI. Ctrl+C to stop.
-# For k8s/container later, this is just local dev convenience.
+# Launch TODO Dashboard as a Windows app (native WebView2 window).
+# For HTTP-only mode: .\run.ps1 --server
 $ErrorActionPreference = "Stop"
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $here
+$env:Path = "$env:USERPROFILE\.cargo\bin;" + $env:Path
 
 $exe = Join-Path $here "target\release\todo-dashboard.exe"
 $log = Join-Path $here "todo-dashboard.log"
 
-# Free the port if a leftover instance is still bound
-Get-Process -Name "todo-dashboard" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-Start-Sleep -Milliseconds 300
-
 if ($args -contains "--build" -or -not (Test-Path $exe)) {
     Write-Host "Building release..."
     cargo build --release
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 }
 
 if (-not (Test-Path $exe)) {
@@ -22,11 +19,20 @@ if (-not (Test-Path $exe)) {
     exit 1
 }
 
-Write-Host ""
-Write-Host "  TODO Dashboard (dev)"
-Write-Host "  http://127.0.0.1:7878/"
-Write-Host "  log: $log"
-Write-Host "  Ctrl+C to stop"
-Write-Host ""
+$pass = @()
+foreach ($a in $args) {
+    if ($a -eq "--build") { continue }
+    if ($a -eq "--server") { $pass += @("--mode", "server"); continue }
+    $pass += $a
+}
 
-& $exe --port 7878 --log-file $log --log-level info
+Write-Host "Starting TODO Dashboard..."
+Write-Host "  log: $log"
+if ($pass -contains "server") {
+    Write-Host "  mode: server  http://127.0.0.1:7878/"
+    & $exe @pass --log-file $log --log-level info
+} else {
+    Write-Host "  mode: desktop window"
+    # Start detached so this shell can return; window is the app UI
+    Start-Process -FilePath $exe -ArgumentList (@("--log-file", $log, "--log-level", "info") + $pass) -WorkingDirectory $here
+}

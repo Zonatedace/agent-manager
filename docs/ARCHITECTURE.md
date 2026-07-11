@@ -4,19 +4,33 @@ Local **Rust / Axum** process serving a single-page dashboard and JSON APIs. No 
 
 ## Runtime
 
+### Desktop app mode (default on Windows)
+
 ```text
-Browser  ──HTTP──►  todo-dashboard.exe  (:7878)
-                       │
-                       ├─ scan Repos/**/TODO.md
-                       ├─ git CLI per project
-                       ├─ spawn agent CLIs (Grok / Claude / Codex)
-                       └─ read ~/.claude, ~/.grok, ~/.codex for usage
+┌─────────────────────────────────────┐
+│  todo-dashboard.exe                 │
+│  ┌──────────────┐   ┌─────────────┐ │
+│  │ WebView2     │──►│ Axum :7878  │ │
+│  │ (tao + wry)  │   │ loopback    │ │
+│  └──────────────┘   └──────┬──────┘ │
+│                            │        │
+│         scan TODOs / git / agents / usage
+└─────────────────────────────────────┘
 ```
+
+- Main thread: native window (`src/desktop.rs`, WebView2).
+- Background Tokio runtime: HTTP API + sessions.
+- Closing the window exits the process.
+- Release builds use `windows_subsystem = "windows"` (no console); logs still go to `todo-dashboard.log`.
+
+### Server mode (`--mode server`)
+
+Same Axum stack without a window; optional external browser via `open`.
 
 - **UI**: `static/index.html` embedded at compile time (`include_str!`). Rebuild after HTML changes.
 - **API**: Axum routes in `src/server.rs`.
 - **Config**: `todo-dashboard.config.json` (settings API) + CLI flags (`--root`, `--port`, …).
-- **Logs**: `todo-dashboard.log` (and optional PID file).
+- **Logs**: `todo-dashboard.log`.
 
 ### Dev process management (Windows)
 
@@ -33,7 +47,8 @@ Prod intent: container / k8s (not Task Scheduler). See open items in `TODO.md`.
 
 | Module | Responsibility |
 |--------|----------------|
-| `main.rs` | CLI, logging, boot |
+| `main.rs` | CLI, logging, boot (app vs server) |
+| `desktop.rs` | Windows WebView2 window (tao/wry) |
 | `server.rs` | HTTP routes, health, wiring |
 | `scanner.rs` / `parser.rs` / `todos.rs` | Discover and parse/write TODO markdown |
 | `models.rs` | Shared DTOs |

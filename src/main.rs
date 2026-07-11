@@ -1,4 +1,9 @@
+// Hide the console window in Windows release builds (file logging still works).
+// Debug builds keep a console for tracing. Override with --console.
+#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
+
 mod agents;
+mod desktop;
 mod fsbrowser;
 mod git;
 mod models;
@@ -10,16 +15,25 @@ mod settings;
 mod todos;
 mod usage;
 
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 use std::path::PathBuf;
 use std::sync::Arc;
 use tracing::{error, info, warn};
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+enum RunMode {
+    /// Native desktop window (default on Windows)
+    App,
+    /// HTTP server only — no window (browser optional)
+    Server,
+}
+
 #[derive(Parser, Debug)]
 #[command(
     name = "todo-dashboard",
-    about = "Scan project TODO.md files and serve a local dashboard"
+    about = "TODO Dashboard — local multi-repo TODO app with agents and usage meters",
+    long_about = "Windows desktop app (WebView2) by default. Use --mode server for headless HTTP only."
 )]
 struct Args {
     /// Root directory containing project repos
@@ -30,19 +44,31 @@ struct Args {
     )]
     root: PathBuf,
 
-    /// HTTP port
+    /// HTTP port (loopback only)
     #[arg(short, long, default_value_t = 7878)]
     port: u16,
 
-    /// Open the browser automatically
+    /// Run mode: app = native window, server = HTTP only
+    #[arg(long, value_enum, default_value_t = default_run_mode())]
+    mode: RunMode,
+
+    /// Shorthand for --mode server
+    #[arg(long, default_value_t = false)]
+    server: bool,
+
+    /// Attach a console on Windows release builds (for debugging)
+    #[arg(long, default_value_t = false)]
+    console: bool,
+
+    /// Open an external browser (server mode only; ignored in app mode)
     #[arg(long, default_value_t = true)]
     open: bool,
 
-    /// Do not open the browser
+    /// Do not open an external browser
     #[arg(long, default_value_t = false)]
     no_open: bool,
 
-    /// Log file path (also always logs to stdout)
+    /// Log file path
     #[arg(long, default_value = "todo-dashboard.log")]
     log_file: PathBuf,
 
@@ -50,20 +76,30 @@ struct Args {
     #[arg(long, default_value = "info")]
     log_level: String,
 
-    /// Path to settings JSON (persists root folder and preferences)
+    /// Path to settings JSON
     #[arg(long, default_value = "todo-dashboard.config.json")]
     config: PathBuf,
 
-    /// Ignore saved config root and force this root (one-shot override)
+    /// Ignore saved config root and force this root
     #[arg(long)]
     force_root: Option<PathBuf>,
 }
 
-fn init_logging(log_file: &PathBuf, log_level: &str) -> tracing_appender::non_blocking::WorkerGuard {
-    let filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new(log_level));
+fn default_run_mode() -> RunMode {
+    if cfg!(windows) {
+        RunMode::App
+    } else {
+        RunMode::Server
+    }
+}
 
-    // Ensure parent dir exists for log file
+fn init_logging(
+    log_file: &PathBuf,
+    log_level: &str,
+    want_stdout: bool,
+) -> tracing_appender::non_blocking::WorkerGuard {
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(log_level));
+
     if let Some(parent) = log_file.parent() {
         if !parent.as_os_str().is_empty() {
             let _ = std::fs::create_dir_all(parent);
@@ -76,7 +112,6 @@ fn init_logging(log_file: &PathBuf, log_level: &str) -> tracing_appender::non_bl
         .open(log_file)
         .unwrap_or_else(|e| {
             eprintln!("WARN: could not open log file {}: {e}", log_file.display());
-            // Fallback: open a local default
             std::fs::OpenOptions::new()
                 .create(true)
                 .append(true)
@@ -86,21 +121,22 @@ fn init_logging(log_file: &PathBuf, log_level: &str) -> tracing_appender::non_bl
 
     let (non_blocking, guard) = tracing_appender::non_blocking(file);
 
-    let stdout_layer = fmt::layer()
-        .with_target(true)
-        .with_thread_ids(false)
-        .with_writer(std::io::stdout);
-
     let file_layer = fmt::layer()
         .with_ansi(false)
         .with_target(true)
         .with_writer(non_blocking);
 
-    tracing_subscriber::registry()
-        .with(filter)
-        .with(stdout_layer)
-        .with(file_layer)
-        .init();
+    let registry = tracing_subscriber::registry().with(filter).with(file_layer);
+
+    if want_stdout {
+        let stdout_layer = fmt::layer()
+            .with_target(true)
+            .with_thread_ids(false)
+            .with_writer(std::io::stdout);
+        registry.with(stdout_layer).init();
+    } else {
+        registry.init();
+    }
 
     guard
 }
@@ -108,47 +144,70 @@ fn init_logging(log_file: &PathBuf, log_level: &str) -> tracing_appender::non_bl
 fn install_panic_hook() {
     let default = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
-        // Always print to stderr even if tracing fails
         eprintln!("PANIC: {info}");
         error!(panic = %info, "application panic");
         default(info);
     }));
 }
 
-#[tokio::main]
-async fn main() {
-    let args = Args::parse();
-    let open_browser = args.open && !args.no_open;
+/// Allocate a console on Windows when running as a GUI-subsystem binary.
+#[cfg(windows)]
+fn attach_console_if_requested(requested: bool) {
+    if !requested {
+        return;
+    }
+    // SAFETY: process-wide console attach once at startup before logging.
+    unsafe {
+        type BOOL = i32;
+        extern "system" {
+            fn AttachConsole(dw_process_id: u32) -> BOOL;
+            fn AllocConsole() -> BOOL;
+        }
+        const ATTACH_PARENT_PROCESS: u32 = 0xFFFF_FFFF;
+        if AttachConsole(ATTACH_PARENT_PROCESS) == 0 {
+            let _ = AllocConsole();
+        }
+    }
+}
 
-    // Keep guard alive for the process lifetime so file logs flush
-    let _log_guard = init_logging(&args.log_file, &args.log_level);
+#[cfg(not(windows))]
+fn attach_console_if_requested(_requested: bool) {}
+
+fn main() {
+    let mut args = Args::parse();
+    if args.server {
+        args.mode = RunMode::Server;
+    }
+
+    attach_console_if_requested(args.console);
+
+    // Console stdout in: debug builds, server mode, or --console
+    let want_stdout =
+        cfg!(debug_assertions) || args.mode == RunMode::Server || args.console;
+
+    let _log_guard = init_logging(&args.log_file, &args.log_level, want_stdout);
     install_panic_hook();
 
     let mut settings = settings::load(&args.config);
-    // CLI --root always applied when using default flow; --force-root wins; else config root
     if let Some(fr) = args.force_root.clone() {
         settings.root = fr.to_string_lossy().to_string();
     } else if settings.root.is_empty() {
         settings.root = args.root.to_string_lossy().to_string();
-    } else if args.root.to_string_lossy() != r"C:\Users\Brandon\Desktop\Repos"
-        && args.root != PathBuf::from(&settings.root)
-    {
-        // Explicit non-default --root on CLI overrides config for this run and is saved later only if user uses settings UI
-        // If user passed --root different from default, prefer it
+    } else {
         let default_root = PathBuf::from(r"C:\Users\Brandon\Desktop\Repos");
-        if args.root != default_root {
+        if args.root != default_root && args.root != PathBuf::from(&settings.root) {
             settings.root = args.root.to_string_lossy().to_string();
         }
     }
     settings.normalize();
 
-    // Prefer settings open_browser unless --no-open
-    let open_browser = open_browser && settings.open_browser_on_start;
+    let open_browser = args.open && !args.no_open && settings.open_browser_on_start;
 
     info!(
         version = env!("CARGO_PKG_VERSION"),
         root = %settings.root,
         port = args.port,
+        ?args.mode,
         log_file = %args.log_file.display(),
         config = %args.config.display(),
         "starting todo-dashboard"
@@ -183,7 +242,6 @@ async fn main() {
         "scan complete"
     );
 
-    // Persist config on first run so UI edits have a file to update
     if !args.config.exists() {
         if let Err(e) = settings::save(&args.config, &settings) {
             warn!(error = %e, "could not write initial config");
@@ -197,26 +255,70 @@ async fn main() {
         args.config.clone(),
         sessions::SessionManager::new(),
     ));
-    // Bind IPv4 loopback explicitly. Prefer opening http://127.0.0.1 (not localhost)
-    // so browsers don't try IPv6 ::1 first and get "connection refused".
+
     let addr = format!("127.0.0.1:{}", args.port);
     let url = format!("http://127.0.0.1:{}/", args.port);
 
-    info!(%addr, %url, "dashboard listening");
-    println!("Dashboard listening on {url}");
-    println!("  (use 127.0.0.1 — not localhost — if the browser fails to connect)");
-    println!("Logs: stdout + {}", args.log_file.display());
-    println!("Config: {}", args.config.display());
+    // Dedicated multi-thread runtime so the UI thread can block on the native window.
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .thread_name("todo-dash")
+        .build()
+        .expect("tokio runtime");
 
-    if open_browser {
-        if let Err(e) = open::that(&url) {
-            warn!(error = %e, "could not open browser");
+    let serve_state = state.clone();
+    let serve_addr = addr.clone();
+    rt.spawn(async move {
+        if let Err(e) = server::serve(serve_state, &serve_addr).await {
+            error!(error = %e, "server exited with error");
         }
+    });
+
+    if !desktop::wait_for_server(&url, std::time::Duration::from_secs(30)) {
+        eprintln!("Server failed to start on {url} — see {}", args.log_file.display());
+        std::process::exit(1);
     }
 
-    if let Err(e) = server::serve(state, &addr).await {
-        error!(error = %e, "server exited with error");
-        eprintln!("Server error: {e}");
-        std::process::exit(1);
+    info!(%addr, %url, mode = ?args.mode, "dashboard ready");
+
+    match args.mode {
+        RunMode::App => {
+            if want_stdout {
+                println!("TODO Dashboard (desktop) → {url}");
+                println!("Logs: {}", args.log_file.display());
+            }
+            // Block until window closes
+            if let Err(e) = desktop::run_main_window(&url, "TODO Dashboard") {
+                error!(error = %e, "desktop window failed");
+                eprintln!("{e}");
+                // Fall back to server + browser so the user is not stuck
+                warn!("falling back to server mode");
+                if open_browser {
+                    let _ = open::that(&url);
+                }
+                // Keep process alive serving HTTP
+                loop {
+                    std::thread::sleep(std::time::Duration::from_secs(3600));
+                }
+            }
+            info!("window closed — exiting");
+            // Force-exit so background tokio workers / sessions don't hang the process
+            std::process::exit(0);
+        }
+        RunMode::Server => {
+            println!("Dashboard listening on {url}");
+            println!("  (use 127.0.0.1 — not localhost — if the browser fails to connect)");
+            println!("Logs: stdout + {}", args.log_file.display());
+            println!("Config: {}", args.config.display());
+            if open_browser {
+                if let Err(e) = open::that(&url) {
+                    warn!(error = %e, "could not open browser");
+                }
+            }
+            // Block forever (server runs on runtime)
+            loop {
+                std::thread::sleep(std::time::Duration::from_secs(3600));
+            }
+        }
     }
 }

@@ -36,7 +36,12 @@ Local backlog for the TODO Dashboard. Checked items are done; open items are sti
 - [x] Settings UI (root path, refresh intervals)
 - [x] Filesystem browser for project context
 - [x] Dev runners: `run.ps1`, `restart.ps1`, `ensure-running.ps1` (no Task Scheduler)
-- [ ] Container / k8s deployment manifests (prod target)
+- [x] Windows desktop app (WebView2 via tao/wry; `--mode server` for headless)
+- [x] Start Menu / Desktop shortcuts (`install-desktop.ps1`)
+- [ ] Embed custom window icon in exe resources reliably (winres + assets/icon.ico)
+- [ ] Single-file installer (MSIX / Inno Setup / cargo-packager)
+- [ ] System tray minimize instead of full exit
+- [ ] Container / k8s deployment manifests (server mode)
 - [ ] Health banner auto-restart option (opt-in, still no Task Scheduler unless user chooses)
 - [ ] Export / print filtered TODO list
 - [ ] Dark/light theme toggle
