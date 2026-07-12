@@ -9,6 +9,7 @@ mod fsbrowser;
 mod git;
 mod models;
 mod parser;
+mod process_util;
 mod scanner;
 mod server;
 #[cfg(windows)]
@@ -118,11 +119,30 @@ struct Args {
 }
 
 fn default_run_mode() -> RunMode {
+    // Dedicated client binary always defaults to thin-client mode.
+    if exe_is_client_bin() {
+        return RunMode::Client;
+    }
     if cfg!(windows) {
         RunMode::App
     } else {
         RunMode::Server
     }
+}
+
+/// True when this process was launched as `agent-manager-client(.exe)`.
+/// The Cargo.toml defines a second [[bin]] with the same main that only
+/// differs by output name — we detect that name so double-clicking the
+/// client exe never starts a local server.
+fn exe_is_client_bin() -> bool {
+    std::env::current_exe()
+        .ok()
+        .and_then(|p| p.file_stem().map(|s| s.to_string_lossy().into_owned()))
+        .map(|stem| {
+            let s = stem.to_ascii_lowercase();
+            s == "agent-manager-client" || s.ends_with("-client")
+        })
+        .unwrap_or(false)
 }
 
 fn init_logging(
@@ -143,7 +163,10 @@ fn init_logging(
         .append(true)
         .open(log_file)
         .unwrap_or_else(|e| {
-            eprintln!("WARN: could not open log file {}: {e}", log_file.display());
+            let _ = writeln_safe_stderr(&format!(
+                "WARN: could not open log file {}: {e}",
+                log_file.display()
+            ));
             std::fs::OpenOptions::new()
                 .create(true)
                 .append(true)
@@ -176,10 +199,27 @@ fn init_logging(
 fn install_panic_hook() {
     let default = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
-        eprintln!("PANIC: {info}");
+        // Never use println!/eprintln! after detach — broken stdout panics on Windows.
+        let _ = writeln_safe_stderr(&format!("PANIC: {info}"));
         error!(panic = %info, "application panic");
         default(info);
     }));
+}
+
+/// Write a line to stdout without panicking when the pipe is closed (detached
+/// WMI / Start-Process / service-adjacent launches on Windows).
+fn writeln_safe_stdout(msg: &str) {
+    use std::io::Write;
+    let mut out = std::io::stdout();
+    let _ = writeln!(out, "{msg}");
+    let _ = out.flush();
+}
+
+fn writeln_safe_stderr(msg: &str) -> std::io::Result<()> {
+    use std::io::Write;
+    let mut err = std::io::stderr();
+    writeln!(err, "{msg}")?;
+    err.flush()
 }
 
 /// Allocate a console on Windows when running as a GUI-subsystem binary.
@@ -221,11 +261,11 @@ fn resolve_config_path(configured: PathBuf) -> PathBuf {
             };
             match std::fs::copy(&legacy, &target) {
                 Ok(_) => {
-                    eprintln!(
+                    let _ = writeln_safe_stderr(&format!(
                         "Migrated settings {} → {}",
                         legacy.display(),
                         target.display()
-                    );
+                    ));
                     return target;
                 }
                 Err(_) => return legacy,
@@ -290,10 +330,10 @@ fn chdir_to_install_dir() {
                 dir.to_path_buf()
             };
             if let Err(e) = std::env::set_current_dir(&install) {
-                eprintln!(
+                let _ = writeln_safe_stderr(&format!(
                     "WARN: could not chdir to {}: {e}",
                     install.display()
-                );
+                ));
             }
         }
     }
@@ -334,6 +374,17 @@ fn main() {
     if args.service {
         args.mode = RunMode::Service;
     }
+    // Dedicated agent-manager-client.exe always runs as thin client (no local server).
+    if exe_is_client_bin() {
+        args.mode = RunMode::Client;
+        // Prefer a separate log file when using the client binary defaults.
+        if std::env::var_os("AGENT_MANAGER_LOG_FILE").is_none()
+            && !std::env::args().any(|a| a == "--log-file")
+            && args.log_file.as_os_str() == "agent-manager.log"
+        {
+            args.log_file = PathBuf::from("agent-manager-client.log");
+        }
+    }
 
     if args.mode == RunMode::Service {
         chdir_to_install_dir();
@@ -370,14 +421,14 @@ fn main() {
             );
             if let Err(e) = service::run_service_dispatcher() {
                 error!(error = %e, "service dispatcher failed");
-                eprintln!("{e}");
+                let _ = writeln_safe_stderr(&e);
                 std::process::exit(1);
             }
             return;
         }
         #[cfg(not(windows))]
         {
-            eprintln!("--mode service is only supported on Windows");
+            let _ = writeln_safe_stderr("--mode service is only supported on Windows");
             std::process::exit(1);
         }
     }
@@ -391,7 +442,7 @@ fn main() {
     if args.mode == RunMode::Server {
         if let Err(e) = run_server_headless(None) {
             error!(error = %e, "server failed");
-            eprintln!("{e}");
+            let _ = writeln_safe_stderr(&e);
             std::process::exit(1);
         }
         return;
@@ -400,7 +451,7 @@ fn main() {
     // App mode: local server + desktop window
     if let Err(e) = run_app_mode(&args, want_stdout) {
         error!(error = %e, "app failed");
-        eprintln!("{e}");
+        let _ = writeln_safe_stderr(&e);
         std::process::exit(1);
     }
 }
@@ -541,13 +592,17 @@ pub(crate) fn run_server_headless(
     }
 
     if !is_service {
-        println!("Dashboard listening on {url}");
+        // Safe prints: detached launches (restart.ps1 / ensure-running.ps1 via WMI)
+        // close stdout and `println!` would panic the whole process (os error 232).
+        writeln_safe_stdout(&format!("Dashboard listening on {url}"));
         if bind_host != "127.0.0.1" && bind_host != "localhost" {
-            println!("  bound on {addr}");
+            writeln_safe_stdout(&format!("  bound on {addr}"));
         }
-        println!("  (use 127.0.0.1 — not localhost — if the browser fails to connect)");
-        println!("Logs: stdout + {}", args.log_file.display());
-        println!("Config: {}", args.config.display());
+        writeln_safe_stdout(
+            "  (use 127.0.0.1 — not localhost — if the browser fails to connect)",
+        );
+        writeln_safe_stdout(&format!("Logs: stdout + {}", args.log_file.display()));
+        writeln_safe_stdout(&format!("Config: {}", args.config.display()));
         if open_browser {
             if let Err(e) = open::that(&url) {
                 warn!(error = %e, "could not open browser");
@@ -663,8 +718,8 @@ fn run_app_mode(args: &Args, want_stdout: bool) -> Result<(), String> {
     info!(%addr, %url, mode = ?args.mode, "dashboard ready");
 
     if want_stdout {
-        println!("Agent Manager (desktop) → {url}");
-        println!("Logs: {}", args.log_file.display());
+        writeln_safe_stdout(&format!("Agent Manager (desktop) → {url}"));
+        writeln_safe_stdout(&format!("Logs: {}", args.log_file.display()));
     }
 
     if let Err(e) = desktop::run_main_window(&url, "Agent Manager") {
@@ -713,14 +768,17 @@ fn run_client_mode(args: &Args, want_stdout: bool) {
     );
 
     if want_stdout {
-        println!("Agent Manager (client)");
+        writeln_safe_stdout("Agent Manager (client)");
         if client_cfg.has_server_url() && !args.reset_server_url {
-            println!("  server: {}", client_cfg.server_url);
+            writeln_safe_stdout(&format!("  server: {}", client_cfg.server_url));
         } else {
-            println!("  server URL not set — setup prompt will open");
+            writeln_safe_stdout("  server URL not set — setup prompt will open");
         }
-        println!("  client config: {}", client_config_path.display());
-        println!("Logs: {}", args.log_file.display());
+        writeln_safe_stdout(&format!(
+            "  client config: {}",
+            client_config_path.display()
+        ));
+        writeln_safe_stdout(&format!("Logs: {}", args.log_file.display()));
     }
 
     let server_url = if client_cfg.has_server_url() {
@@ -736,7 +794,7 @@ fn run_client_mode(args: &Args, want_stdout: bool) {
         force_setup: args.reset_server_url,
     }) {
         error!(error = %e, "client window failed");
-        eprintln!("{e}");
+        let _ = writeln_safe_stderr(&e);
         std::process::exit(1);
     }
     info!("client window closed — exiting");

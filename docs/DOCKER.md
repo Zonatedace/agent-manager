@@ -14,11 +14,20 @@ cd path\to\agent-manager
 docker compose up -d --build
 ```
 
-Open http://127.0.0.1:7878/ or use the thin Windows client:
+### Open the UI
+
+| How | Command / URL |
+|-----|----------------|
+| Browser | http://127.0.0.1:7878/ |
+| Thin Windows client | `.\target\release\agent-manager-client.exe --server-url http://127.0.0.1:7878/` |
+| Main binary (same) | `.\target\release\agent-manager.exe --mode client --server-url http://127.0.0.1:7878/` |
 
 ```powershell
-.\target\release\agent-manager.exe --mode client --server-url http://127.0.0.1:7878/
+cargo build --release
+.\target\release\agent-manager-client.exe --server-url http://127.0.0.1:7878/
 ```
+
+Browser and client load the same dashboard from the container.
 
 ## What runs in the container
 
@@ -49,7 +58,7 @@ Open http://127.0.0.1:7878/ or use the thin Windows client:
    - Grok: Grok CLI / xAI credentials under your user profile
 4. The UI shows local install + auth status (discover API). Credentials never go into the Docker image.
 
-Connecting a pure WebView client to Docker alone cannot run agents — there is no CLI inside the container.
+Connecting a pure WebView client (or browser) to Docker alone cannot run agents — there is no CLI inside the container.
 
 ## Rebuild / redeploy
 

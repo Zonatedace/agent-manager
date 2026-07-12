@@ -1253,6 +1253,32 @@
       height: 14px;
       fill: currentColor;
     }
+    .app-chrome .conn-origin {
+      font-size: 0.72rem;
+      color: var(--text-dim);
+      font-family: var(--mono);
+      max-width: min(42vw, 360px);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .app-chrome .btn-change-server {
+      font-size: 0.72rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 0.28rem 0.65rem;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .app-chrome .btn-change-server:hover {
+      color: var(--text);
+      border-color: var(--accent);
+      background: var(--accent-soft);
+    }
+    .app-chrome .btn-change-server[hidden] { display: none; }
 
     /* Usage meters */
     .usage-bar {
@@ -1386,8 +1412,10 @@
 <body>
   <div class="toast" id="toast"></div>
   <div class="app-chrome" id="appChrome">
-    <a class="brand" href="/" title="Agent Manager">Agent Manager<span>local</span></a>
+    <a class="brand" href="/" title="Agent Manager">Agent Manager<span id="chromeModeLabel">…</span></a>
+    <span class="conn-origin" id="chromeOrigin" title="Connected server"></span>
     <div class="chrome-spacer"></div>
+    <button type="button" class="btn-change-server" id="btnChangeServer" hidden title="Change Server URL (Windows client)">Change server</button>
     <a class="github-link"
        id="githubLink"
        href="https://github.com/Zonatedace/agent-manager"
@@ -1500,7 +1528,7 @@
     <aside class="sidebar" id="sidebar">
       <div class="sidebar-header">
         <div class="brand">
-          <div class="brand-mark">TD</div>
+          <div class="brand-mark">AM</div>
           <div>
             <h1>Agent Manager</h1>
             <span id="rootPath">scanning…</span>
@@ -1817,6 +1845,8 @@
           refresh().catch(() => {});
         }, mins * 60 * 1000);
       }
+      // Keep health poll in sync with settings.health_poll_seconds
+      if (typeof scheduleHealthPoll === "function") scheduleHealthPoll();
     }
 
     function defaultAgentCwd(projectId) {
@@ -1900,8 +1930,41 @@
       state.folderPicker.target = null;
     }
 
+    /* ---------- Shell / connection chrome (web + Windows client share this page) ---------- */
+    function hasDesktopIpc() {
+      try {
+        return !!(window.ipc && typeof window.ipc.postMessage === "function");
+      } catch {
+        return false;
+      }
+    }
+
+    function updateConnectionChrome() {
+      const originEl = $("#chromeOrigin");
+      const modeEl = $("#chromeModeLabel");
+      const changeBtn = $("#btnChangeServer");
+      const origin = location.origin || "";
+      if (originEl) {
+        originEl.textContent = origin;
+        originEl.title = `Connected to ${origin}`;
+      }
+      const isLoopback = /^(https?:\/\/)?(127\.0\.0\.1|localhost)(:\d+)?$/i.test(origin.replace(/\/$/, ""));
+      if (modeEl) {
+        if (hasDesktopIpc()) modeEl.textContent = isLoopback ? "desktop" : "client";
+        else modeEl.textContent = isLoopback ? "local" : "web";
+      }
+      if (changeBtn) {
+        // Windows thin client WebView exposes ipc; browser does not.
+        changeBtn.hidden = !hasDesktopIpc();
+      }
+    }
+
     /* ---------- Agent modal ---------- */
     async function ensureDiscovery() {
+      if (!state.agentsActive) {
+        state.discovery = null;
+        return null;
+      }
       if (state.discovery) return state.discovery;
       state.discovery = await api("/api/agents/discover");
       return state.discovery;
@@ -1956,6 +2019,10 @@
       if ($("#agentOrchestrator")) $("#agentOrchestrator").checked = false;
 
       ensureDiscovery().then(d => {
+        if (!d || !d.clis) {
+          toast("Coding agents are not active — enable them in Settings", true);
+          return;
+        }
         renderCliPills(d);
         fillPresets(state.agent.cli);
         updateAgentPreview();
@@ -2783,6 +2850,21 @@
           </div>
         </div>
         <div class="settings-card">
+          <h3>Connection</h3>
+          <div class="form-field full">
+            <label>This UI is talking to</label>
+            <div class="path-row">
+              <input type="text" readonly value="${escapeHtml(location.origin || "")}" spellcheck="false" />
+            </div>
+            <div class="hint">
+              Browser and Windows client load the same dashboard from this server.
+              ${hasDesktopIpc()
+                ? `Windows client: use <strong>Change server</strong> in the header to pick a different Server URL (saved in <code>agent-manager.client.json</code>).`
+                : `Web browser: open any Agent Manager server URL directly. For a thin desktop shell, run <code>agent-manager --mode client</code>.`}
+            </div>
+          </div>
+        </div>
+        <div class="settings-card">
           <h3>UI &amp; scanning</h3>
           <div class="form-grid">
             <div class="form-field">
@@ -2904,6 +2986,7 @@
         state.settings = res.settings;
         state.allowAgents = res.allow_agents !== false;
         state.agentsActive = !!res.agents_active;
+        if (!state.agentsActive) state.discovery = null;
         if (res.global) state.data = res.global;
         applySettingsToUiDefaults();
         applyAgentsChrome();
@@ -2914,7 +2997,12 @@
           state.projectId = null;
           state.view = "global";
         }
-        if (state.agentsActive) pollUsage();
+        if (state.agentsActive) {
+          pollUsage();
+          ensureDiscovery().catch(() => {});
+        } else {
+          pollUsage(); // clears usage bar when inactive
+        }
         render();
       } catch (e) {
         toast(e.message || "Save failed", true);
@@ -3373,11 +3461,35 @@
       }
     });
 
-    load();
-    loadSettings().catch((e) => console.warn("[agent-manager] settings load failed", e));
-    ensureDiscovery().catch((e) => console.warn("[agent-manager] discover failed", e));
-    connectSessionEvents();
-    refreshSessions().catch(() => {});
+    updateConnectionChrome();
+    $("#btnChangeServer")?.addEventListener("click", () => {
+      if (!hasDesktopIpc()) {
+        toast("Open this page in the Windows client to change Server URL", true);
+        return;
+      }
+      try {
+        // Prefill with current origin so reconnect is one-click
+        window.ipc.postMessage("show-setup:" + (location.origin + "/"));
+      } catch (e) {
+        toast("Could not open server setup: " + (e.message || e), true);
+      }
+    });
+
+    // Shared boot path for browser and Windows WebView — same HTML, same APIs.
+    (async function boot() {
+      try {
+        await loadSettings();
+      } catch (e) {
+        console.warn("[agent-manager] settings load failed", e);
+      }
+      await load();
+      if (state.agentsActive) {
+        ensureDiscovery().catch((e) => console.warn("[agent-manager] discover failed", e));
+        pollUsage();
+      }
+      connectSessionEvents();
+      refreshSessions().catch(() => {});
+    })();
 
     /* ---------- Live usage meters ---------- */
     function usageFillClass(pct, severity, hasMeter) {
@@ -3538,12 +3650,18 @@
     }
 
     // 60s — Claude's oauth/usage is rate-limited if polled too often (30s was 429ing).
-    pollUsage();
+    // Initial pollUsage runs from boot() after settings (agents gate).
     setInterval(pollUsage, 60000);
     setInterval(tickUsageResetTimers, 1000);
 
     // Poll health so the banner appears if the server dies mid-session
-    setInterval(() => { checkHealth().catch(() => {}); }, Math.max(5, state.healthPollSeconds || 15) * 1000);
+    let healthTimer = null;
+    function scheduleHealthPoll() {
+      if (healthTimer) clearInterval(healthTimer);
+      const secs = Math.max(5, Number(state.healthPollSeconds) || 15);
+      healthTimer = setInterval(() => { checkHealth().catch(() => {}); }, secs * 1000);
+    }
+    scheduleHealthPoll();
   </script>
 </body>
 </html>

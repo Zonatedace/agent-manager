@@ -151,7 +151,10 @@ fn which_cli(name: &str) -> Option<PathBuf> {
     // Try `where` on Windows first for .cmd/.ps1 shims
     #[cfg(windows)]
     {
-        if let Ok(output) = Command::new("where").arg(name).output() {
+        let mut cmd = Command::new("where");
+        cmd.arg(name);
+        crate::process_util::hide_console(&mut cmd);
+        if let Ok(output) = cmd.output() {
             if output.status.success() {
                 let stdout = String::from_utf8_lossy(&output.stdout);
                 if let Some(line) = stdout.lines().next() {
@@ -187,6 +190,7 @@ fn run_cli_capture(cli: &str, args: &[&str]) -> Option<String> {
     cmd.env("TERM", "dumb");
     cmd.env("NO_COLOR", "1");
     cmd.env("CI", "1");
+    crate::process_util::hide_console(&mut cmd);
     let output = cmd.output().ok()?;
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
@@ -937,6 +941,7 @@ pub fn launch_interactive(cli: AgentCli, args: &[String], cwd: &Path, title: &st
     }
 
     // 3) Last resort: cmd /c start
+    // Hide the intermediate cmd.exe so only the new agent console is visible.
     let title_safe = title.replace('"', "");
     let mut cmd = Command::new("cmd.exe");
     cmd.args([
@@ -955,6 +960,7 @@ pub fn launch_interactive(cli: AgentCli, args: &[String], cwd: &Path, title: &st
     .stdin(std::process::Stdio::null())
     .stdout(std::process::Stdio::null())
     .stderr(std::process::Stdio::null());
+    crate::process_util::hide_console(&mut cmd);
 
     match cmd.spawn() {
         Ok(mut c) => {
@@ -1091,18 +1097,21 @@ pub fn launch_headless(
     match cmd.spawn() {
         Ok(_) => Ok(log_path),
         Err(e) => {
-            // Retry with no special flags
+            // Retry with CREATE_NO_WINDOW only (skip process-group flag)
             let log_file = std::fs::OpenOptions::new()
                 .append(true)
                 .open(&log_path)
                 .map_err(|e2| format!("reopen log: {e2}"))?;
             let log_err = log_file.try_clone().map_err(|e2| format!("clone log: {e2}"))?;
-            Command::new(cli.as_str())
+            let mut retry = Command::new(cli.as_str());
+            retry
                 .args(args)
                 .current_dir(cwd)
                 .stdin(std::process::Stdio::null())
                 .stdout(log_file)
-                .stderr(log_err)
+                .stderr(log_err);
+            crate::process_util::hide_console(&mut retry);
+            retry
                 .spawn()
                 .map_err(|e2| format!("failed to spawn headless agent ({e} / retry {e2})"))?;
             Ok(log_path)

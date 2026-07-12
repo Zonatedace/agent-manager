@@ -38,7 +38,9 @@ pub fn run_service_dispatcher() -> Result<(), String> {
 
 fn service_main(_arguments: Vec<OsString>) {
     if let Err(e) = run_service() {
-        eprintln!("Agent Manager service error: {e}");
+        // Avoid println!/eprintln! — broken pipes panic under some hosts.
+        use std::io::Write;
+        let _ = writeln!(std::io::stderr(), "Agent Manager service error: {e}");
         error!(error = %e, "service main failed");
     }
 }

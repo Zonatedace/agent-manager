@@ -152,6 +152,8 @@ pub fn run_client_window(opts: ClientWindowOpts) -> Result<(), String> {
     let ipc_proxy = proxy.clone();
     let handler = move |req: Request<String>| {
         let body = req.body().trim();
+        // Shared dashboard (index.html) can request setup via window.ipc.postMessage.
+        // Browser has no ipc — same HTML works for web and Windows client.
         if let Some(rest) = body.strip_prefix("connect:") {
             let _ = ipc_proxy.send_event(ClientEvent::Connect(rest.to_string()));
         } else if body == "show-setup" {

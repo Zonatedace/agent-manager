@@ -2,15 +2,23 @@
 /target/
 **/*.pdb
 
-# Local runtime
+# Local runtime (never commit machine-specific state)
 agent-manager.log
+agent-manager-client.log
 agent-manager.pid
 agent-manager.config.json
 agent-manager.client.json
+agent-manager.config.json.tmp
+agent-manager.client.json.tmp
 *.log
+service-install.log
+elev-proof.txt
 
 # Local MCP dumps / scratch (not part of the app)
 /mcps/
+
+# One-shot elevated install helpers with hard-coded machine paths
+/scripts/elevated-install-once.ps1
 
 # OS / editor
 .DS_Store
@@ -30,4 +38,4 @@ Thumbs.db
 todo-dashboard.log
 todo-dashboard.pid
 todo-dashboard.config.json
-
+todo-dashboard.exe.WebView2/

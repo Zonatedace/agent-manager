@@ -465,8 +465,8 @@ impl SessionManager {
         let cancel_thread = cancel.clone();
 
         let join = tokio::task::spawn_blocking(move || -> Result<Option<i32>, String> {
-            let mut child = StdCommand::new(&cli_name)
-                .args(&args_owned)
+            let mut cmd = StdCommand::new(&cli_name);
+            cmd.args(&args_owned)
                 .current_dir(&cwd_owned)
                 .stdin(StdStdio::null())
                 .stdout(StdStdio::piped())
@@ -474,7 +474,10 @@ impl SessionManager {
                 // Encourage line-buffering / less pipe buffering where tools honor these
                 .env("PYTHONUNBUFFERED", "1")
                 .env("NODE_NO_READLINE", "1")
-                .env("RUST_LOG_STYLE", "always")
+                .env("RUST_LOG_STYLE", "always");
+            // No console flash under the Windows GUI app / server host.
+            crate::process_util::hide_console(&mut cmd);
+            let mut child = cmd
                 .spawn()
                 .map_err(|e| format!("failed to spawn {cli_name}: {e}"))?;
 

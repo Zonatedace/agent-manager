@@ -5,13 +5,30 @@ Local **Rust** process: native Windows window (WebView2) + **Axum** JSON API on 
 | | |
 |--|--|
 | **Repo** | https://github.com/Zonatedace/agent-manager |
-| **Binary** | `target\release\agent-manager.exe` |
+| **Full app** | `target\release\agent-manager.exe` |
+| **Thin client** | `target\release\agent-manager-client.exe` |
 | **API** | `http://127.0.0.1:7878/` |
 | **Paths** | `.env` (`AGENT_MANAGER_ROOT`, …) — see `.env.example` |
 
+Browser and Windows client load the **same** embedded UI (`static/index.html`).
+
+## Binaries
+
+| Binary | Role |
+|--------|------|
+| `agent-manager.exe` | Full app (default: local server + window), or `--mode server` / `service` / `client` |
+| `agent-manager-client.exe` | **Always** thin client — WebView only, connects via Server URL |
+
+Both are built from the same `src/main.rs` (`Cargo.toml` `[[bin]]` entries). The client binary forces client mode from its executable name.
+
+```powershell
+cargo build --release
+# produces both agent-manager.exe and agent-manager-client.exe
+```
+
 ## Runtime
 
-### Desktop app mode (default on Windows)
+### Desktop app mode (default on Windows — `agent-manager.exe`)
 
 ```text
 ┌─────────────────────────────────────┐
@@ -29,10 +46,13 @@ Local **Rust** process: native Windows window (WebView2) + **Axum** JSON API on 
 - Background Tokio runtime: HTTP API + sessions.
 - Closing the window exits the process.
 - Release builds use `windows_subsystem = "windows"` (no console); logs go to `agent-manager.log`.
+- Background `git` / CLI spawns use `CREATE_NO_WINDOW` so child consoles do not flash (`src/process_util.rs`).
 
 ### Server mode (`--mode server`)
 
 Same Axum stack without a window; optional external browser via `open`. Bind with `--host 0.0.0.0` (or `AGENT_MANAGER_HOST`) so remote Windows clients can connect.
+
+**Detached starts** (WMI / `restart.ps1` / `ensure-running.ps1`) must not use panicking `println!` — stdout may be closed. Safe writers are used instead.
 
 ### Docker server (preferred always-on)
 
@@ -47,7 +67,8 @@ Same Axum stack without a window; optional external browser via `open`. Bind wit
                │ HTTP
      ┌─────────┴──────────┐
      │ Browser or         │
-     │ --mode client      │
+     │ agent-manager-     │
+     │   client.exe       │
      └────────────────────┘
 ```
 
@@ -61,24 +82,31 @@ See [DOCKER.md](DOCKER.md). Coding agents are **not** in the image; enable them 
 | `settings.agents_enabled` | User toggle in Settings |
 | `agents_active` | both true → discover/start/sessions/usage live |
 
-Auth status is reported by `/api/agents/discover` from **local** credential files / PATH — never from the container.
+Auth status is reported by `/api/agents/discover` from **local** credential files / PATH — never from the container. The shared UI only calls discover when agents are active (avoids 403 noise when off).
 
-### Client mode (`--mode client`)
+### Client mode (`agent-manager-client.exe` or `--mode client`)
 
-Thin WebView2 shell only — **no** local scan or HTTP server.
+Thin WebView2 shell only — **no** local scan or HTTP server. Prefer the dedicated binary:
+
+| Binary | Behavior |
+|--------|----------|
+| `agent-manager-client.exe` | Always client mode (double-clickable) |
+| `agent-manager.exe --mode client` | Same, via flag |
 
 ```text
-┌──────────────────────┐         ┌─────────────────────────┐
-│ agent-manager.exe    │  HTTP   │ agent-manager --mode    │
-│ --mode client        │────────►│ server  (:7878)         │
-│ WebView2 + Server URL│         │ Axum + scan / agents    │
-└──────────────────────┘         └─────────────────────────┘
+┌────────────────────────────┐         ┌─────────────────────────┐
+│ agent-manager-client.exe   │  HTTP   │ agent-manager --mode    │
+│ WebView2 + Server URL      │────────►│ server  (:7878)         │
+└────────────────────────────┘         │ Axum + scan / agents    │
+                                       └─────────────────────────┘
 ```
 
 - **Server URL** is required. Resolution: `--server-url` / `AGENT_MANAGER_SERVER_URL` → `agent-manager.client.json` → **setup prompt until provided**.
 - On connect, the client probes `GET /api/health`, then persists the URL.
-- Stale/unreachable saved URLs re-open the setup prompt. `--reset-server-url` forces it.
+- Stale/unreachable saved URLs re-open the setup prompt. `--reset-server-url` forces it; under WebView, the header **Change server** button uses IPC to re-open setup.
 - Client config is separate from server settings (`agent-manager.client.json`).
+- Default log file for the client binary: `agent-manager-client.log`.
+- UI chrome shows connection origin and mode label (`local` / `web` / `desktop` / `client`).
 
 | Artifact | Path / note |
 |----------|-------------|
@@ -88,7 +116,7 @@ Thin WebView2 shell only — **no** local scan or HTTP server.
 | Env | `.env` / `AGENT_MANAGER_*` (see `.env.example`) |
 | Config | `agent-manager.config.json` (legacy `todo-dashboard.config.json` migrated if needed) |
 | Client config | `agent-manager.client.json` (`server_url`) |
-| Logs | `agent-manager.log` |
+| Logs | `agent-manager.log` / `agent-manager-client.log` |
 
 ### Configuration priority
 
@@ -99,25 +127,32 @@ Scan root resolution:
 3. `root` in `agent-manager.config.json`
 4. Portable default (`~/Desktop/Repos`, `~/repos`, home, or cwd)
 
+Client Server URL resolution:
+
+1. `--server-url` / `AGENT_MANAGER_SERVER_URL`
+2. `server_url` in `agent-manager.client.json`
+3. Setup prompt (required until provided)
+
 ### Dev process management (Windows)
 
 | Script | Purpose |
 |--------|---------|
-| `run.ps1` | Build if needed; launch desktop window (or `--server` / `--client`) |
+| `run.ps1` | Build if needed; launch app, `--server`, or `--client` (client exe) |
 | `restart.ps1` | Stop process, optional release build, start detached (WMI) |
 | `ensure-running.ps1` | Health-check and start if down (prefers Windows Service if installed) |
-| `install-desktop.ps1` | Start Menu + Desktop shortcuts → this checkout’s exe |
+| `install-desktop.ps1` | Start Menu + Desktop: **Agent Manager** + **Agent Manager Client** |
 | `deploy-service.ps1` | **Build + deploy** Windows Service (admin) |
 | `install-service.ps1` | Install / update / uninstall `AgentManager` service |
 | `install-autostart.ps1` | Points at service deploy (Task Scheduler not used) |
 
-Production intent for headless on Windows: **Windows Service** via `deploy-service.ps1`. Container / k8s remains an option for non-Windows hosts.
+Production intent for headless on Windows: **Windows Service** via `deploy-service.ps1`. Container remains an option for non-Windows hosts.
 
 ## Modules (`src/`)
 
 | Module | Responsibility |
 |--------|----------------|
-| `main.rs` | CLI, dotenv, logging, boot (app / server / client / service), config path migration |
+| `main.rs` | CLI, dotenv, logging, boot (app / server / client / service); shared by both bins |
+| `process_util.rs` | Windows `CREATE_NO_WINDOW` for background child processes |
 | `desktop.rs` | Windows WebView2 window (tao/wry); client setup prompt for Server URL |
 | `client_config.rs` | Client `server_url` load/save + health probe |
 | `service.rs` | Windows Service dispatcher + stop/status (Windows only) |
@@ -161,7 +196,9 @@ cd agent-manager
 copy .env.example .env
 # set AGENT_MANAGER_ROOT
 cargo build --release
-# binary: target\release\agent-manager.exe
+# binaries:
+#   target\release\agent-manager.exe
+#   target\release\agent-manager-client.exe
 ```
 
-HTML and server code ship in one binary; `cargo build` is required after `static/` edits.
+HTML and server code ship in both binaries; `cargo build` is required after `static/` edits.
