@@ -4,12 +4,13 @@ Agent Manager’s header shows live **Claude**, **Grok**, and **Codex** usage. E
 
 | | |
 |--|--|
-| **App** | Agent Manager |
-| **Endpoint** | `GET http://127.0.0.1:7878/api/usage` |
-| **UI poll** | Every **60s** (client); server caches longer per provider |
+| **App** | Agent Manager (full app, browser, or thin client — same UI) |
+| **Endpoint** | `GET http://127.0.0.1:7878/api/usage` (on the **server** host) |
+| **UI poll** | Every **60s** when coding agents are active; server caches longer per provider |
 | **Timers** | Tick every **1s** from `resets_at` between polls |
+| **Gate** | Usage meters only when `agents_active` (host allows agents + Settings enabled) |
 
-Tokens never leave the machine in the JSON response (only plan labels, percents, and timers). Credentials are read from local CLI auth files.
+Tokens never leave the machine in the JSON response (only plan labels, percents, and timers). Credentials are read from local CLI auth files **on the server host** (not inside Docker; not on a pure thin client machine unless that machine is the server).
 
 ---
 

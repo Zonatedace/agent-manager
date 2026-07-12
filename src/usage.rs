@@ -1388,7 +1388,21 @@ fn fetch_grok() -> UsageMeter {
 
 /// Collect usage for all three agents (blocking; call from spawn_blocking).
 pub fn collect_all() -> UsageSnapshot {
-    let meters = vec![fetch_claude(), fetch_grok(), fetch_codex()];
+    collect_selected(true, true, true)
+}
+
+/// Collect usage only for providers the user enabled in settings.
+pub fn collect_selected(claude: bool, grok: bool, codex: bool) -> UsageSnapshot {
+    let mut meters = Vec::new();
+    if claude {
+        meters.push(fetch_claude());
+    }
+    if grok {
+        meters.push(fetch_grok());
+    }
+    if codex {
+        meters.push(fetch_codex());
+    }
     UsageSnapshot {
         fetched_at: Utc::now(),
         meters,

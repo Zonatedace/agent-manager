@@ -34,6 +34,20 @@ pub struct Settings {
     /// (defaults to root at runtime when empty)
     #[serde(default)]
     pub default_agent_cwd: String,
+    /// User preference: enable coding-agent features in the app UI
+    /// (CLIs run where available — never inside the Docker server image).
+    /// Authentication is performed on the front-end / local machine.
+    #[serde(default)]
+    pub agents_enabled: bool,
+    /// When agents are enabled, collect Claude usage
+    #[serde(default = "default_true")]
+    pub agents_claude: bool,
+    /// When agents are enabled, collect Grok usage / launch Grok
+    #[serde(default = "default_true")]
+    pub agents_grok: bool,
+    /// When agents are enabled, collect Codex usage / launch Codex
+    #[serde(default = "default_true")]
+    pub agents_codex: bool,
 }
 
 fn default_cli() -> String {
@@ -67,7 +81,24 @@ impl Default for Settings {
             auto_refresh_minutes: 0,
             default_item_status: default_item_status(),
             default_agent_cwd: String::new(),
+            agents_enabled: false,
+            agents_claude: true,
+            agents_grok: true,
+            agents_codex: true,
         }
+    }
+}
+
+/// Whether this process is allowed to host agent CLIs at all.
+/// Docker sets `AGENT_MANAGER_ALLOW_AGENTS=0` — agents are app/client-side only.
+pub fn allow_agents_from_env() -> bool {
+    match std::env::var("AGENT_MANAGER_ALLOW_AGENTS") {
+        Ok(v) => {
+            let v = v.trim().to_ascii_lowercase();
+            !(v == "0" || v == "false" || v == "no" || v == "off")
+        }
+        // Default: allow on native hosts; Docker compose always sets 0.
+        Err(_) => true,
     }
 }
 

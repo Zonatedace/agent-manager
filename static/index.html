@@ -1253,6 +1253,32 @@
       height: 14px;
       fill: currentColor;
     }
+    .app-chrome .conn-origin {
+      font-size: 0.72rem;
+      color: var(--text-dim);
+      font-family: var(--mono);
+      max-width: min(42vw, 360px);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .app-chrome .btn-change-server {
+      font-size: 0.72rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 0.28rem 0.65rem;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .app-chrome .btn-change-server:hover {
+      color: var(--text);
+      border-color: var(--accent);
+      background: var(--accent-soft);
+    }
+    .app-chrome .btn-change-server[hidden] { display: none; }
 
     /* Usage meters */
     .usage-bar {
@@ -1386,8 +1412,10 @@
 <body>
   <div class="toast" id="toast"></div>
   <div class="app-chrome" id="appChrome">
-    <a class="brand" href="/" title="Agent Manager">Agent Manager<span>local</span></a>
+    <a class="brand" href="/" title="Agent Manager">Agent Manager<span id="chromeModeLabel">…</span></a>
+    <span class="conn-origin" id="chromeOrigin" title="Connected server"></span>
     <div class="chrome-spacer"></div>
+    <button type="button" class="btn-change-server" id="btnChangeServer" hidden title="Change Server URL (Windows client)">Change server</button>
     <a class="github-link"
        id="githubLink"
        href="https://github.com/Zonatedace/agent-manager"
@@ -1500,7 +1528,7 @@
     <aside class="sidebar" id="sidebar">
       <div class="sidebar-header">
         <div class="brand">
-          <div class="brand-mark">TD</div>
+          <div class="brand-mark">AM</div>
           <div>
             <h1>Agent Manager</h1>
             <span id="rootPath">scanning…</span>
@@ -1557,6 +1585,8 @@
       itemStatus: "open", // open | done | all
       discovery: null,
       settings: null,
+      allowAgents: true,
+      agentsActive: false,
       agent: {
         cli: "grok",
         projectId: null,
@@ -1772,11 +1802,26 @@
     async function loadSettings() {
       const res = await api("/api/settings");
       state.settings = res.settings;
+      state.allowAgents = res.allow_agents !== false;
+      state.agentsActive = !!res.agents_active;
       state.healthPollSeconds = res.settings.health_poll_seconds || 15;
       state.autoRefreshMinutes = res.settings.auto_refresh_minutes || 0;
       applySettingsToUiDefaults();
+      applyAgentsChrome();
       setupAutoRefresh();
       return res;
+    }
+
+    /** Show/hide Agents nav + usage bar from settings + host capability. */
+    function applyAgentsChrome() {
+      const active = !!state.agentsActive;
+      const btn = $("#btnAgents");
+      if (btn) btn.style.display = active ? "" : "none";
+      const bar = $("#usageBar");
+      if (bar) bar.style.display = active ? "" : "none";
+      if (!active && state.view === "agents") {
+        state.view = "global";
+      }
     }
 
     function applySettingsToUiDefaults() {
@@ -1800,6 +1845,8 @@
           refresh().catch(() => {});
         }, mins * 60 * 1000);
       }
+      // Keep health poll in sync with settings.health_poll_seconds
+      if (typeof scheduleHealthPoll === "function") scheduleHealthPoll();
     }
 
     function defaultAgentCwd(projectId) {
@@ -1883,8 +1930,41 @@
       state.folderPicker.target = null;
     }
 
+    /* ---------- Shell / connection chrome (web + Windows client share this page) ---------- */
+    function hasDesktopIpc() {
+      try {
+        return !!(window.ipc && typeof window.ipc.postMessage === "function");
+      } catch {
+        return false;
+      }
+    }
+
+    function updateConnectionChrome() {
+      const originEl = $("#chromeOrigin");
+      const modeEl = $("#chromeModeLabel");
+      const changeBtn = $("#btnChangeServer");
+      const origin = location.origin || "";
+      if (originEl) {
+        originEl.textContent = origin;
+        originEl.title = `Connected to ${origin}`;
+      }
+      const isLoopback = /^(https?:\/\/)?(127\.0\.0\.1|localhost)(:\d+)?$/i.test(origin.replace(/\/$/, ""));
+      if (modeEl) {
+        if (hasDesktopIpc()) modeEl.textContent = isLoopback ? "desktop" : "client";
+        else modeEl.textContent = isLoopback ? "local" : "web";
+      }
+      if (changeBtn) {
+        // Windows thin client WebView exposes ipc; browser does not.
+        changeBtn.hidden = !hasDesktopIpc();
+      }
+    }
+
     /* ---------- Agent modal ---------- */
     async function ensureDiscovery() {
+      if (!state.agentsActive) {
+        state.discovery = null;
+        return null;
+      }
       if (state.discovery) return state.discovery;
       state.discovery = await api("/api/agents/discover");
       return state.discovery;
@@ -1939,6 +2019,10 @@
       if ($("#agentOrchestrator")) $("#agentOrchestrator").checked = false;
 
       ensureDiscovery().then(d => {
+        if (!d || !d.clis) {
+          toast("Coding agents are not active — enable them in Settings", true);
+          return;
+        }
         renderCliPills(d);
         fillPresets(state.agent.cli);
         updateAgentPreview();
@@ -2270,6 +2354,11 @@
     }
 
     function showAgents() {
+      if (!state.agentsActive) {
+        toast("Enable coding agents in Settings first", true);
+        showSettings();
+        return;
+      }
       state.view = "agents";
       closeSidebar();
       refreshSessions().then(() => render());
@@ -2676,6 +2765,8 @@
 
     function renderSettings() {
       const s = state.settings || {};
+      const allow = state.allowAgents !== false;
+      const agentsOn = !!s.agents_enabled;
       $("#content").innerHTML = `
         <div class="settings-card">
           <h3>Repos root</h3>
@@ -2689,11 +2780,46 @@
           </div>
         </div>
         <div class="settings-card">
+          <h3>Coding agents</h3>
+          <div class="form-field full">
+            <label class="form-check" style="text-transform:none;letter-spacing:0;font-weight:500">
+              <input type="checkbox" id="setAgentsEnabled" ${agentsOn ? "checked" : ""} ${allow ? "" : "disabled"} />
+              Enable coding agents (Claude / Grok / Codex)
+            </label>
+            <div class="hint" style="margin-top:0.5rem">
+              ${allow
+                ? "When enabled, Agents, sessions, and usage meters appear. <strong>Authentication is done on this machine</strong> via each CLI (front-end shows status) — credentials are never stored in the Docker server."
+                : "<strong>This server cannot run coding agents</strong> (e.g. Docker image has no CLIs). Connect with the Windows app on a PC that has <code>claude</code> / <code>grok</code> / <code>codex</code>, or run Agent Manager in local app mode."}
+            </div>
+          </div>
+          <div class="form-grid" id="agentProviderToggles" style="${agentsOn && allow ? "" : "opacity:0.55;pointer-events:none"}">
+            <div class="form-field full">
+              <label class="form-check" style="text-transform:none;letter-spacing:0;font-weight:500">
+                <input type="checkbox" id="setAgentsClaude" ${s.agents_claude !== false ? "checked" : ""} />
+                Claude
+              </label>
+            </div>
+            <div class="form-field full">
+              <label class="form-check" style="text-transform:none;letter-spacing:0;font-weight:500">
+                <input type="checkbox" id="setAgentsGrok" ${s.agents_grok !== false ? "checked" : ""} />
+                Grok
+              </label>
+            </div>
+            <div class="form-field full">
+              <label class="form-check" style="text-transform:none;letter-spacing:0;font-weight:500">
+                <input type="checkbox" id="setAgentsCodex" ${s.agents_codex !== false ? "checked" : ""} />
+                Codex
+              </label>
+            </div>
+          </div>
+          <div id="agentAuthPanel" style="margin-top:0.85rem"></div>
+        </div>
+        <div class="settings-card" id="agentDefaultsCard" style="${agentsOn && allow ? "" : "opacity:0.55"}">
           <h3>Agent defaults</h3>
           <div class="form-grid">
             <div class="form-field">
               <label for="setDefaultCli">Default CLI</label>
-              <select id="setDefaultCli">
+              <select id="setDefaultCli" ${agentsOn && allow ? "" : "disabled"}>
                 <option value="grok" ${s.default_cli === "grok" ? "selected" : ""}>Grok</option>
                 <option value="claude" ${s.default_cli === "claude" ? "selected" : ""}>Claude</option>
                 <option value="codex" ${s.default_cli === "codex" ? "selected" : ""}>Codex</option>
@@ -2701,25 +2827,40 @@
             </div>
             <div class="form-field">
               <label for="setDefaultModel">Default model</label>
-              <input id="setDefaultModel" value="${escapeHtml(s.default_model || "")}" placeholder="e.g. sonnet" />
+              <input id="setDefaultModel" value="${escapeHtml(s.default_model || "")}" placeholder="e.g. sonnet" ${agentsOn && allow ? "" : "disabled"} />
             </div>
             <div class="form-field">
               <label for="setDefaultEffort">Default effort</label>
-              <input id="setDefaultEffort" value="${escapeHtml(s.default_effort || "")}" placeholder="e.g. high" />
+              <input id="setDefaultEffort" value="${escapeHtml(s.default_effort || "")}" placeholder="e.g. high" ${agentsOn && allow ? "" : "disabled"} />
             </div>
             <div class="form-field full">
               <label for="setDefaultAgentCwd">Default agent cwd (global Run Agent)</label>
               <div class="path-row">
-                <input id="setDefaultAgentCwd" value="${escapeHtml(s.default_agent_cwd || "")}" placeholder="Leave empty to use repos root" spellcheck="false" />
-                <button type="button" class="btn" id="browseAgentCwdDefault">Browse…</button>
+                <input id="setDefaultAgentCwd" value="${escapeHtml(s.default_agent_cwd || "")}" placeholder="Leave empty to use repos root" spellcheck="false" ${agentsOn && allow ? "" : "disabled"} />
+                <button type="button" class="btn" id="browseAgentCwdDefault" ${agentsOn && allow ? "" : "disabled"}>Browse…</button>
               </div>
               <div class="hint">When empty, global Agent uses the repos root folder.</div>
             </div>
             <div class="form-field full">
               <label class="form-check" style="text-transform:none;letter-spacing:0;font-weight:500">
-                <input type="checkbox" id="setAlwaysApprove" ${s.default_always_approve ? "checked" : ""} />
+                <input type="checkbox" id="setAlwaysApprove" ${s.default_always_approve ? "checked" : ""} ${agentsOn && allow ? "" : "disabled"} />
                 Default: auto-approve tools / skip permission prompts
               </label>
+            </div>
+          </div>
+        </div>
+        <div class="settings-card">
+          <h3>Connection</h3>
+          <div class="form-field full">
+            <label>This UI is talking to</label>
+            <div class="path-row">
+              <input type="text" readonly value="${escapeHtml(location.origin || "")}" spellcheck="false" />
+            </div>
+            <div class="hint">
+              Browser and Windows client load the same dashboard from this server.
+              ${hasDesktopIpc()
+                ? `Windows client: use <strong>Change server</strong> in the header to pick a different Server URL (saved in <code>agent-manager.client.json</code>).`
+                : `Web browser: open any Agent Manager server URL directly. For a thin desktop shell, run <code>agent-manager --mode client</code>.`}
             </div>
           </div>
         </div>
@@ -2774,6 +2915,47 @@
       $("#btnReloadSettings")?.addEventListener("click", () => {
         loadSettings().then(() => { toast("Reloaded"); render(); }).catch(e => toast(e.message, true));
       });
+      $("#setAgentsEnabled")?.addEventListener("change", () => {
+        const on = $("#setAgentsEnabled").checked;
+        const wrap = $("#agentProviderToggles");
+        if (wrap) {
+          wrap.style.opacity = on ? "" : "0.55";
+          wrap.style.pointerEvents = on ? "" : "none";
+        }
+      });
+      if (agentsOn && allow) {
+        refreshAgentAuthPanel();
+      }
+    }
+
+    async function refreshAgentAuthPanel() {
+      const el = $("#agentAuthPanel");
+      if (!el) return;
+      el.innerHTML = `<div class="hint">Checking local CLI install / auth status…</div>`;
+      try {
+        const d = await api("/api/agents/discover", { timeoutMs: 30000 });
+        const clis = d.clis || [];
+        el.innerHTML = `
+          <div class="hint" style="margin-bottom:0.5rem"><strong>Local authentication</strong> (this machine — not the Docker server)</div>
+          ${clis.map(c => {
+            const ok = c.available && c.authenticated;
+            const badge = !c.available ? "missing" : (c.authenticated ? "signed in" : "sign in needed");
+            const color = !c.available ? "var(--danger, #f87171)" : (c.authenticated ? "#4ade80" : "#fbbf24");
+            return `<div style="border:1px solid var(--border,#2d3a4d);border-radius:8px;padding:0.65rem 0.75rem;margin-bottom:0.45rem">
+              <div style="display:flex;justify-content:space-between;gap:0.5rem;align-items:center">
+                <strong style="text-transform:capitalize">${escapeHtml(c.name)}</strong>
+                <span style="font-size:0.8rem;color:${color}">${escapeHtml(badge)}</span>
+              </div>
+              <div class="hint" style="margin-top:0.35rem">${escapeHtml(c.auth_hint || "")}</div>
+              ${c.auth_command ? `<div class="hint" style="margin-top:0.25rem">Auth command: <code>${escapeHtml(c.auth_command)}</code></div>` : ""}
+              ${c.path ? `<div class="hint">Path: <code>${escapeHtml(c.path)}</code></div>` : ""}
+            </div>`;
+          }).join("")}
+          <div class="hint">Run auth commands in a local terminal, then click Reload or re-open Settings.</div>
+        `;
+      } catch (e) {
+        el.innerHTML = `<div class="hint" style="color:var(--danger,#f87171)">${escapeHtml(e.message || "Could not load agent status")}</div>`;
+      }
     }
 
     async function saveSettingsFromForm() {
@@ -2789,6 +2971,10 @@
         health_poll_seconds: Number($("#setHealthPoll").value) || 15,
         auto_refresh_minutes: Number($("#setAutoRefresh").value) || 0,
         open_browser_on_start: $("#setOpenBrowser").checked,
+        agents_enabled: !!$("#setAgentsEnabled")?.checked,
+        agents_claude: !!$("#setAgentsClaude")?.checked,
+        agents_grok: !!$("#setAgentsGrok")?.checked,
+        agents_codex: !!$("#setAgentsCodex")?.checked,
       };
       try {
         const res = await api("/api/settings", {
@@ -2798,14 +2984,24 @@
           timeoutMs: 180000,
         });
         state.settings = res.settings;
+        state.allowAgents = res.allow_agents !== false;
+        state.agentsActive = !!res.agents_active;
+        if (!state.agentsActive) state.discovery = null;
         if (res.global) state.data = res.global;
         applySettingsToUiDefaults();
+        applyAgentsChrome();
         setupAutoRefresh();
         toast(res.root_changed ? "Saved — root changed, rescan complete" : "Settings saved");
         if (res.root_changed) {
           state.project = null;
           state.projectId = null;
           state.view = "global";
+        }
+        if (state.agentsActive) {
+          pollUsage();
+          ensureDiscovery().catch(() => {});
+        } else {
+          pollUsage(); // clears usage bar when inactive
         }
         render();
       } catch (e) {
@@ -3265,11 +3461,35 @@
       }
     });
 
-    load();
-    loadSettings().catch((e) => console.warn("[agent-manager] settings load failed", e));
-    ensureDiscovery().catch((e) => console.warn("[agent-manager] discover failed", e));
-    connectSessionEvents();
-    refreshSessions().catch(() => {});
+    updateConnectionChrome();
+    $("#btnChangeServer")?.addEventListener("click", () => {
+      if (!hasDesktopIpc()) {
+        toast("Open this page in the Windows client to change Server URL", true);
+        return;
+      }
+      try {
+        // Prefill with current origin so reconnect is one-click
+        window.ipc.postMessage("show-setup:" + (location.origin + "/"));
+      } catch (e) {
+        toast("Could not open server setup: " + (e.message || e), true);
+      }
+    });
+
+    // Shared boot path for browser and Windows WebView — same HTML, same APIs.
+    (async function boot() {
+      try {
+        await loadSettings();
+      } catch (e) {
+        console.warn("[agent-manager] settings load failed", e);
+      }
+      await load();
+      if (state.agentsActive) {
+        ensureDiscovery().catch((e) => console.warn("[agent-manager] discover failed", e));
+        pollUsage();
+      }
+      connectSessionEvents();
+      refreshSessions().catch(() => {});
+    })();
 
     /* ---------- Live usage meters ---------- */
     function usageFillClass(pct, severity, hasMeter) {
@@ -3411,6 +3631,11 @@
     }
 
     async function pollUsage() {
+      if (!state.agentsActive) {
+        const bar = $("#usageBar");
+        if (bar) bar.innerHTML = "";
+        return;
+      }
       try {
         const snap = await api("/api/usage", { timeoutMs: 20000 });
         state.usage = snap;
@@ -3425,12 +3650,18 @@
     }
 
     // 60s — Claude's oauth/usage is rate-limited if polled too often (30s was 429ing).
-    pollUsage();
+    // Initial pollUsage runs from boot() after settings (agents gate).
     setInterval(pollUsage, 60000);
     setInterval(tickUsageResetTimers, 1000);
 
     // Poll health so the banner appears if the server dies mid-session
-    setInterval(() => { checkHealth().catch(() => {}); }, Math.max(5, state.healthPollSeconds || 15) * 1000);
+    let healthTimer = null;
+    function scheduleHealthPoll() {
+      if (healthTimer) clearInterval(healthTimer);
+      const secs = Math.max(5, Number(state.healthPollSeconds) || 15);
+      healthTimer = setInterval(() => { checkHealth().catch(() => {}); }, secs * 1000);
+    }
+    scheduleHealthPoll();
   </script>
 </body>
 </html>

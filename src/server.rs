@@ -36,6 +36,8 @@ pub struct AppState {
     pub settings: RwLock<Settings>,
     pub config_path: PathBuf,
     pub sessions: SessionManager,
+    /// Process-level gate (false in Docker). User toggle is `settings.agents_enabled`.
+    pub allow_agents: bool,
 }
 
 impl AppState {
@@ -45,6 +47,7 @@ impl AppState {
         settings: Settings,
         config_path: PathBuf,
         sessions: SessionManager,
+        allow_agents: bool,
     ) -> Self {
         Self {
             root: RwLock::new(root),
@@ -52,11 +55,37 @@ impl AppState {
             settings: RwLock::new(settings),
             config_path,
             sessions,
+            allow_agents,
         }
     }
 
     pub async fn root_path(&self) -> PathBuf {
         self.root.read().await.clone()
+    }
+
+    /// Agents active = host allows them AND user enabled them in settings.
+    pub async fn agents_active(&self) -> bool {
+        if !self.allow_agents {
+            return false;
+        }
+        self.settings.read().await.agents_enabled
+    }
+}
+
+fn agents_disabled_response(allow: bool) -> Response {
+    if !allow {
+        json_error(
+            StatusCode::FORBIDDEN,
+            "Coding agents are not available on this server (e.g. Docker image has no agent CLIs). \
+             Enable agents in the Windows app settings on a machine where claude/grok/codex are installed, \
+             or run Agent Manager in app mode locally.",
+        )
+    } else {
+        json_error(
+            StatusCode::FORBIDDEN,
+            "Coding agents are disabled in Settings. Turn on “Enable coding agents” to use CLIs, \
+             sessions, and usage meters. Authentication is done on this machine (front-end / local CLI login).",
+        )
     }
 }
 
@@ -110,6 +139,18 @@ async fn request_log(req: Request<axum::body::Body>, next: Next) -> Response {
 }
 
 pub async fn serve(state: Arc<AppState>, addr: &str) -> Result<(), String> {
+    serve_with_shutdown(state, addr, std::future::pending()).await
+}
+
+/// Serve until `shutdown` completes (e.g. Windows service stop signal).
+pub async fn serve_with_shutdown<F>(
+    state: Arc<AppState>,
+    addr: &str,
+    shutdown: F,
+) -> Result<(), String>
+where
+    F: std::future::Future<Output = ()> + Send + 'static,
+{
     let app = Router::new()
         .route("/", get(index_html))
         .route("/api/global", get(api_global))
@@ -154,6 +195,7 @@ pub async fn serve(state: Arc<AppState>, addr: &str) -> Result<(), String> {
 
     info!(%addr, "http server bound");
     axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown)
         .await
         .map_err(|e| format!("server error: {e}"))
 }
@@ -181,6 +223,7 @@ async fn api_health(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     let snap = state.snapshot.read().await;
     let root = state.root.read().await;
     let settings = state.settings.read().await;
+    let agents_active = state.allow_agents && settings.agents_enabled;
     Json(serde_json::json!({
         "ok": true,
         "status": "ok",
@@ -191,11 +234,35 @@ async fn api_health(State(state): State<Arc<AppState>>) -> impl IntoResponse {
         "root": root.to_string_lossy(),
         "health_poll_seconds": settings.health_poll_seconds,
         "auto_refresh_minutes": settings.auto_refresh_minutes,
+        "allow_agents": state.allow_agents,
+        "agents_enabled": settings.agents_enabled,
+        "agents_active": agents_active,
     }))
 }
 
-async fn api_usage() -> Response {
-    match tokio::task::spawn_blocking(crate::usage::collect_all).await {
+async fn api_usage(State(state): State<Arc<AppState>>) -> Response {
+    if !state.agents_active().await {
+        return json_ok(serde_json::json!({
+            "ok": true,
+            "agents_active": false,
+            "meters": [],
+            "message": if state.allow_agents {
+                "Usage meters hidden — enable coding agents in Settings."
+            } else {
+                "Usage meters unavailable on this host (no agent CLIs; e.g. Docker)."
+            },
+        }));
+    }
+    let settings = state.settings.read().await.clone();
+    match tokio::task::spawn_blocking(move || {
+        crate::usage::collect_selected(
+            settings.agents_claude,
+            settings.agents_grok,
+            settings.agents_codex,
+        )
+    })
+    .await
+    {
         Ok(snap) => json_ok(snap),
         Err(e) => {
             error!(error = %e, "usage collect panicked");
@@ -209,10 +276,18 @@ async fn api_usage() -> Response {
 
 async fn api_settings_get(State(state): State<Arc<AppState>>) -> Response {
     let settings = state.settings.read().await.clone();
+    let agents_active = state.allow_agents && settings.agents_enabled;
     json_ok(serde_json::json!({
         "settings": settings,
         "config_path": state.config_path,
         "root": state.root.read().await.to_string_lossy(),
+        "allow_agents": state.allow_agents,
+        "agents_active": agents_active,
+        "agents_note": if state.allow_agents {
+            "Coding agents run on this host. Auth is done via local CLI login (front-end shows status)."
+        } else {
+            "This server does not host coding agents (Docker/server-only). Use the Windows app on a machine with CLIs, or set AGENT_MANAGER_ALLOW_AGENTS=1 only where agents are installed."
+        },
     }))
 }
 
@@ -221,6 +296,11 @@ async fn api_settings_put(
     Json(mut body): Json<Settings>,
 ) -> Response {
     body.normalize();
+    // Docker / locked hosts: never persist agents_enabled=true
+    if body.agents_enabled && !state.allow_agents {
+        warn!("ignoring agents_enabled=true — host disallows agents");
+        body.agents_enabled = false;
+    }
     let new_root = PathBuf::from(&body.root);
     if let Err(e) = Settings::validate_root(&new_root) {
         return json_error(StatusCode::BAD_REQUEST, e);
@@ -265,6 +345,7 @@ async fn api_settings_put(
     }
 
     let snap = state.snapshot.read().await;
+    let agents_active = state.allow_agents && body.agents_enabled;
     json_ok(serde_json::json!({
         "ok": true,
         "settings": body,
@@ -272,6 +353,8 @@ async fn api_settings_put(
         "projects": snap.projects.len(),
         "open": snap.total_open,
         "global": snap.to_global_view(),
+        "allow_agents": state.allow_agents,
+        "agents_active": agents_active,
     }))
 }
 
@@ -473,7 +556,10 @@ async fn api_todo_toggle(
     }
 }
 
-async fn api_agents_discover() -> Response {
+async fn api_agents_discover(State(state): State<Arc<AppState>>) -> Response {
+    if !state.agents_active().await {
+        return agents_disabled_response(state.allow_agents);
+    }
     // Enumerating models shells out — keep it off the async runtime
     match tokio::task::spawn_blocking(agents::discover).await {
         Ok(d) => json_ok(d),
@@ -490,14 +576,20 @@ async fn api_agents_discover() -> Response {
 /* ---------- In-app agent sessions ---------- */
 
 async fn api_sessions_list(State(state): State<Arc<AppState>>) -> Response {
+    if !state.agents_active().await {
+        return json_ok(serde_json::json!({ "sessions": [], "agents_active": false }));
+    }
     let list = state.sessions.list().await;
-    json_ok(serde_json::json!({ "sessions": list }))
+    json_ok(serde_json::json!({ "sessions": list, "agents_active": true }))
 }
 
 async fn api_sessions_create(
     State(state): State<Arc<AppState>>,
     Json(mut req): Json<CreateSessionRequest>,
 ) -> Response {
+    if !state.agents_active().await {
+        return agents_disabled_response(state.allow_agents);
+    }
     let root = state.root.read().await.clone();
     // Resolve project_id → cwd if needed
     if req.cwd.trim().is_empty() && !req.project_id.trim().is_empty() {
@@ -566,6 +658,9 @@ async fn api_sessions_spawn(
     Path(parent_id): Path<String>,
     Json(mut req): Json<CreateSessionRequest>,
 ) -> Response {
+    if !state.agents_active().await {
+        return agents_disabled_response(state.allow_agents);
+    }
     // Force parent linkage and worker role
     req.parent_id = Some(parent_id.clone());
     if req.role.is_none() {
@@ -642,6 +737,9 @@ async fn api_agents_start(
     State(state): State<Arc<AppState>>,
     Json(req): Json<AgentRequest>,
 ) -> Response {
+    if !state.agents_active().await {
+        return agents_disabled_response(state.allow_agents);
+    }
     info!(
         project_id = %req.project_id,
         cwd = ?req.cwd,

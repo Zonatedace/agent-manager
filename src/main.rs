@@ -3,48 +3,61 @@
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
 mod agents;
+mod client_config;
 mod desktop;
 mod fsbrowser;
 mod git;
 mod models;
 mod parser;
+mod process_util;
 mod scanner;
 mod server;
+#[cfg(windows)]
+mod service;
 mod sessions;
 mod settings;
 mod todos;
 mod usage;
 
 use clap::{Parser, ValueEnum};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::sync::mpsc;
 use std::sync::Arc;
 use tracing::{error, info, warn};
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 enum RunMode {
-    /// Native desktop window (default on Windows)
+    /// Native desktop window + local server (default on Windows)
     App,
     /// HTTP server only — no window (browser optional)
     Server,
+    /// Thin Windows client: connect to a server URL (prompted until set)
+    Client,
+    /// Windows Service host (SCM; headless HTTP with stop control)
+    Service,
 }
 
-#[derive(Parser, Debug)]
+#[derive(Parser, Debug, Clone)]
 #[command(
     name = "agent-manager",
     about = "Agent Manager — local multi-repo TODO app with agents and usage meters",
-    long_about = "Windows desktop app (WebView2) by default. Use --mode server for headless HTTP only.\n\nPaths: set AGENT_MANAGER_ROOT in .env (see .env.example). CLI flags override env; env overrides config."
+    long_about = "Windows desktop app (WebView2) by default. Use --mode server for headless HTTP, --mode service for Windows Service, or --mode client for a thin window that connects to a server URL.\n\nPaths: set AGENT_MANAGER_ROOT in .env (see .env.example). CLI flags override env; env overrides config."
 )]
 struct Args {
     /// Root directory containing project repos (env: AGENT_MANAGER_ROOT)
     #[arg(short, long, env = "AGENT_MANAGER_ROOT")]
     root: Option<PathBuf>,
 
-    /// HTTP port (loopback only; env: AGENT_MANAGER_PORT)
+    /// HTTP port (env: AGENT_MANAGER_PORT)
     #[arg(short, long, env = "AGENT_MANAGER_PORT", default_value_t = 7878)]
     port: u16,
 
-    /// Run mode: app = native window, server = HTTP only
+    /// Bind address for the HTTP server (env: AGENT_MANAGER_HOST). Use 0.0.0.0 for LAN clients.
+    #[arg(long, env = "AGENT_MANAGER_HOST", default_value = "127.0.0.1")]
+    host: String,
+
+    /// Run mode: app | server | client | service
     #[arg(long, value_enum, default_value_t = default_run_mode())]
     mode: RunMode,
 
@@ -52,11 +65,31 @@ struct Args {
     #[arg(long, default_value_t = false)]
     server: bool,
 
+    /// Shorthand for --mode client
+    #[arg(long, default_value_t = false)]
+    client: bool,
+
+    /// Shorthand for --mode service (Windows Service host)
+    #[arg(long, default_value_t = false)]
+    service: bool,
+
+    /// Server URL for client mode (env: AGENT_MANAGER_SERVER_URL)
+    #[arg(long, env = "AGENT_MANAGER_SERVER_URL")]
+    server_url: Option<String>,
+
+    /// Path to client connection config (env: AGENT_MANAGER_CLIENT_CONFIG)
+    #[arg(long, env = "AGENT_MANAGER_CLIENT_CONFIG")]
+    client_config: Option<PathBuf>,
+
+    /// Force the client setup prompt (ignore saved server URL)
+    #[arg(long, default_value_t = false)]
+    reset_server_url: bool,
+
     /// Attach a console on Windows release builds (for debugging)
     #[arg(long, default_value_t = false)]
     console: bool,
 
-    /// Open an external browser (server mode only; ignored in app mode)
+    /// Open an external browser (server mode only; ignored in app/service mode)
     #[arg(long, default_value_t = true)]
     open: bool,
 
@@ -86,11 +119,30 @@ struct Args {
 }
 
 fn default_run_mode() -> RunMode {
+    // Dedicated client binary always defaults to thin-client mode.
+    if exe_is_client_bin() {
+        return RunMode::Client;
+    }
     if cfg!(windows) {
         RunMode::App
     } else {
         RunMode::Server
     }
+}
+
+/// True when this process was launched as `agent-manager-client(.exe)`.
+/// The Cargo.toml defines a second [[bin]] with the same main that only
+/// differs by output name — we detect that name so double-clicking the
+/// client exe never starts a local server.
+fn exe_is_client_bin() -> bool {
+    std::env::current_exe()
+        .ok()
+        .and_then(|p| p.file_stem().map(|s| s.to_string_lossy().into_owned()))
+        .map(|stem| {
+            let s = stem.to_ascii_lowercase();
+            s == "agent-manager-client" || s.ends_with("-client")
+        })
+        .unwrap_or(false)
 }
 
 fn init_logging(
@@ -111,7 +163,10 @@ fn init_logging(
         .append(true)
         .open(log_file)
         .unwrap_or_else(|e| {
-            eprintln!("WARN: could not open log file {}: {e}", log_file.display());
+            let _ = writeln_safe_stderr(&format!(
+                "WARN: could not open log file {}: {e}",
+                log_file.display()
+            ));
             std::fs::OpenOptions::new()
                 .create(true)
                 .append(true)
@@ -144,10 +199,27 @@ fn init_logging(
 fn install_panic_hook() {
     let default = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
-        eprintln!("PANIC: {info}");
+        // Never use println!/eprintln! after detach — broken stdout panics on Windows.
+        let _ = writeln_safe_stderr(&format!("PANIC: {info}"));
         error!(panic = %info, "application panic");
         default(info);
     }));
+}
+
+/// Write a line to stdout without panicking when the pipe is closed (detached
+/// WMI / Start-Process / service-adjacent launches on Windows).
+fn writeln_safe_stdout(msg: &str) {
+    use std::io::Write;
+    let mut out = std::io::stdout();
+    let _ = writeln!(out, "{msg}");
+    let _ = out.flush();
+}
+
+fn writeln_safe_stderr(msg: &str) -> std::io::Result<()> {
+    use std::io::Write;
+    let mut err = std::io::stderr();
+    writeln!(err, "{msg}")?;
+    err.flush()
 }
 
 /// Allocate a console on Windows when running as a GUI-subsystem binary.
@@ -189,11 +261,11 @@ fn resolve_config_path(configured: PathBuf) -> PathBuf {
             };
             match std::fs::copy(&legacy, &target) {
                 Ok(_) => {
-                    eprintln!(
+                    let _ = writeln_safe_stderr(&format!(
                         "Migrated settings {} → {}",
                         legacy.display(),
                         target.display()
-                    );
+                    ));
                     return target;
                 }
                 Err(_) => return legacy,
@@ -244,46 +316,197 @@ fn resolve_root(args: &Args, settings: &settings::Settings) -> PathBuf {
     settings::default_scan_root()
 }
 
+/// When running as a service, SCM sets cwd to System32 — prefer the install/repo dir.
+fn chdir_to_install_dir() {
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            // Prefer repo root when running from target/release
+            let install = if dir.ends_with("release") || dir.ends_with("debug") {
+                dir.parent()
+                    .and_then(|p| p.parent())
+                    .unwrap_or(dir)
+                    .to_path_buf()
+            } else {
+                dir.to_path_buf()
+            };
+            if let Err(e) = std::env::set_current_dir(&install) {
+                let _ = writeln_safe_stderr(&format!(
+                    "WARN: could not chdir to {}: {e}",
+                    install.display()
+                ));
+            }
+        }
+    }
+}
+
+/// Make relative config/log paths absolute against the current working directory
+/// (after chdir for service mode).
+fn absolutize_path(path: PathBuf) -> PathBuf {
+    if path.is_absolute() {
+        return path;
+    }
+    std::env::current_dir()
+        .map(|cwd| cwd.join(&path))
+        .unwrap_or(path)
+}
+
 fn main() {
+    // Service mode must chdir early so relative paths and .env resolve correctly.
+    // We only peek argv for --mode service / --service before full parse.
+    let early_service = std::env::args().any(|a| a == "--service")
+        || std::env::args()
+            .collect::<Vec<_>>()
+            .windows(2)
+            .any(|w| w[0] == "--mode" && w[1] == "service");
+    if early_service {
+        chdir_to_install_dir();
+    }
+
     load_dotenv();
 
     let mut args = Args::parse();
     if args.server {
         args.mode = RunMode::Server;
     }
-    args.config = resolve_config_path(args.config);
+    if args.client {
+        args.mode = RunMode::Client;
+    }
+    if args.service {
+        args.mode = RunMode::Service;
+    }
+    // Dedicated agent-manager-client.exe always runs as thin client (no local server).
+    if exe_is_client_bin() {
+        args.mode = RunMode::Client;
+        // Prefer a separate log file when using the client binary defaults.
+        if std::env::var_os("AGENT_MANAGER_LOG_FILE").is_none()
+            && !std::env::args().any(|a| a == "--log-file")
+            && args.log_file.as_os_str() == "agent-manager.log"
+        {
+            args.log_file = PathBuf::from("agent-manager-client.log");
+        }
+    }
+
+    if args.mode == RunMode::Service {
+        chdir_to_install_dir();
+    }
+
+    args.config = resolve_config_path(absolutize_path(args.config));
+    args.log_file = absolutize_path(args.log_file);
+    if let Some(ref mut r) = args.root {
+        *r = absolutize_path(r.clone());
+    }
+    if let Some(ref mut fr) = args.force_root {
+        *fr = absolutize_path(fr.clone());
+    }
 
     attach_console_if_requested(args.console);
 
-    // Console stdout in: debug builds, server mode, or --console
-    let want_stdout =
-        cfg!(debug_assertions) || args.mode == RunMode::Server || args.console;
+    // Console stdout in: debug builds, server mode (not service), or --console
+    let want_stdout = cfg!(debug_assertions)
+        || args.mode == RunMode::Server
+        || args.console;
 
     let _log_guard = init_logging(&args.log_file, &args.log_level, want_stdout);
     install_panic_hook();
+
+    // Windows Service: hand off to SCM dispatcher (blocks until stop).
+    if args.mode == RunMode::Service {
+        #[cfg(windows)]
+        {
+            info!(
+                version = env!("CARGO_PKG_VERSION"),
+                log_file = %args.log_file.display(),
+                config = %args.config.display(),
+                "Agent Manager service starting (SCM dispatcher)"
+            );
+            if let Err(e) = service::run_service_dispatcher() {
+                error!(error = %e, "service dispatcher failed");
+                let _ = writeln_safe_stderr(&e);
+                std::process::exit(1);
+            }
+            return;
+        }
+        #[cfg(not(windows))]
+        {
+            let _ = writeln_safe_stderr("--mode service is only supported on Windows");
+            std::process::exit(1);
+        }
+    }
+
+    // Client mode: no local scan/server — only a WebView shell + server URL setting.
+    if args.mode == RunMode::Client {
+        run_client_mode(&args, want_stdout);
+        return;
+    }
+
+    if args.mode == RunMode::Server {
+        if let Err(e) = run_server_headless(None) {
+            error!(error = %e, "server failed");
+            let _ = writeln_safe_stderr(&e);
+            std::process::exit(1);
+        }
+        return;
+    }
+
+    // App mode: local server + desktop window
+    if let Err(e) = run_app_mode(&args, want_stdout) {
+        error!(error = %e, "app failed");
+        let _ = writeln_safe_stderr(&e);
+        std::process::exit(1);
+    }
+}
+
+/// Shared boot for headless HTTP (server mode and Windows Service).
+///
+/// When `stop_rx` is `Some`, the process shuts down gracefully on receive
+/// (service Stop/Shutdown). When `None`, blocks forever after bind.
+pub(crate) fn run_server_headless(
+    stop_rx: Option<mpsc::Receiver<()>>,
+) -> Result<(), String> {
+    // Re-parse so service thread sees the same ImagePath args as the process.
+    let mut args = Args::parse_from(std::env::args_os());
+    if args.server {
+        args.mode = RunMode::Server;
+    }
+    if args.service {
+        args.mode = RunMode::Service;
+    }
+    if args.mode == RunMode::Service {
+        chdir_to_install_dir();
+    }
+    args.config = resolve_config_path(absolutize_path(args.config));
+    args.log_file = absolutize_path(args.log_file);
+
+    // Logging may already be initialized from main (server mode). Service mode
+    // initializes in main before dispatcher, so skip re-init if already set.
+    // tracing subscriber can only init once — main already did it.
+
+    let is_service = args.mode == RunMode::Service || stop_rx.is_some();
 
     let mut settings = settings::load(&args.config);
     let root = resolve_root(&args, &settings);
     settings.root = root.to_string_lossy().to_string();
     settings.normalize();
 
-    let open_browser = args.open && !args.no_open && settings.open_browser_on_start;
+    let open_browser = !is_service
+        && args.open
+        && !args.no_open
+        && settings.open_browser_on_start;
 
     info!(
         version = env!("CARGO_PKG_VERSION"),
         root = %settings.root,
+        host = %args.host,
         port = args.port,
-        ?args.mode,
+        mode = ?args.mode,
         log_file = %args.log_file.display(),
         config = %args.config.display(),
-        "starting Agent Manager"
+        "starting Agent Manager (headless)"
     );
 
     let root_path = settings.root_path();
     if let Err(e) = settings::Settings::validate_root(&root_path) {
-        error!(error = %e, "invalid root");
-        eprintln!("{e}");
-        std::process::exit(1);
+        return Err(e);
     }
 
     info!(path = %root_path.display(), "scanning TODOs");
@@ -293,11 +516,7 @@ fn main() {
         scanner::scan_repos(&root_for_scan)
     })) {
         Ok(s) => s,
-        Err(e) => {
-            error!(?e, "scan panicked");
-            eprintln!("Scan panicked — see log for details");
-            std::process::exit(1);
-        }
+        Err(_) => return Err("Scan panicked — see log for details".into()),
     };
     info!(
         projects = snapshot.projects.len(),
@@ -314,23 +533,172 @@ fn main() {
         }
     }
 
+    let allow_agents = settings::allow_agents_from_env();
+    if !allow_agents {
+        info!("coding agents disabled for this process (AGENT_MANAGER_ALLOW_AGENTS)");
+    }
+
     let state = Arc::new(server::AppState::new(
         root_path,
         snapshot,
         settings,
         args.config.clone(),
         sessions::SessionManager::new(),
+        allow_agents,
     ));
 
-    let addr = format!("127.0.0.1:{}", args.port);
-    let url = format!("http://127.0.0.1:{}/", args.port);
+    let bind_host = args.host.trim();
+    let addr = format!("{bind_host}:{}", args.port);
+    let connect_host = if bind_host == "0.0.0.0" || bind_host == "::" {
+        "127.0.0.1"
+    } else {
+        bind_host
+    };
+    let url = format!("http://{connect_host}:{}/", args.port);
 
-    // Dedicated multi-thread runtime so the UI thread can block on the native window.
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .thread_name("agent-mgr")
+        .build()
+        .map_err(|e| format!("tokio runtime: {e}"))?;
+
+    let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
+
+    let serve_state = state.clone();
+    let serve_addr = addr.clone();
+    let serve_handle = rt.spawn(async move {
+        let shutdown = async move {
+            let _ = shutdown_rx.await;
+            info!("graceful shutdown signal received");
+        };
+        if let Err(e) = server::serve_with_shutdown(serve_state, &serve_addr, shutdown).await {
+            error!(error = %e, "server exited with error");
+        }
+    });
+
+    if !desktop::wait_for_server(&url, std::time::Duration::from_secs(30)) {
+        let _ = shutdown_tx.send(());
+        return Err(format!(
+            "Server failed to start on {url} — see {}",
+            args.log_file.display()
+        ));
+    }
+
+    info!(%addr, %url, mode = ?args.mode, "dashboard ready");
+
+    #[cfg(windows)]
+    if is_service {
+        service::set_running_status();
+    }
+
+    if !is_service {
+        // Safe prints: detached launches (restart.ps1 / ensure-running.ps1 via WMI)
+        // close stdout and `println!` would panic the whole process (os error 232).
+        writeln_safe_stdout(&format!("Dashboard listening on {url}"));
+        if bind_host != "127.0.0.1" && bind_host != "localhost" {
+            writeln_safe_stdout(&format!("  bound on {addr}"));
+        }
+        writeln_safe_stdout(
+            "  (use 127.0.0.1 — not localhost — if the browser fails to connect)",
+        );
+        writeln_safe_stdout(&format!("Logs: stdout + {}", args.log_file.display()));
+        writeln_safe_stdout(&format!("Config: {}", args.config.display()));
+        if open_browser {
+            if let Err(e) = open::that(&url) {
+                warn!(error = %e, "could not open browser");
+            }
+        }
+    }
+
+    // Block until stop (service) or forever (interactive server)
+    if let Some(rx) = stop_rx {
+        let _ = rx.recv();
+        info!("stop requested — shutting down HTTP server");
+        let _ = shutdown_tx.send(());
+        // Give axum a moment to drain
+        let _ = rt.block_on(async {
+            tokio::time::timeout(std::time::Duration::from_secs(10), serve_handle).await
+        });
+    } else {
+        // Keep runtime alive forever (server mode)
+        loop {
+            std::thread::sleep(std::time::Duration::from_secs(3600));
+        }
+    }
+
+    Ok(())
+}
+
+fn run_app_mode(args: &Args, want_stdout: bool) -> Result<(), String> {
+    let mut settings = settings::load(&args.config);
+    let root = resolve_root(args, &settings);
+    settings.root = root.to_string_lossy().to_string();
+    settings.normalize();
+
+    let open_browser = args.open && !args.no_open && settings.open_browser_on_start;
+
+    info!(
+        version = env!("CARGO_PKG_VERSION"),
+        root = %settings.root,
+        host = %args.host,
+        port = args.port,
+        ?args.mode,
+        log_file = %args.log_file.display(),
+        config = %args.config.display(),
+        "starting Agent Manager"
+    );
+
+    let root_path = settings.root_path();
+    settings::Settings::validate_root(&root_path)?;
+
+    info!(path = %root_path.display(), "scanning TODOs");
+    let started = std::time::Instant::now();
+    let root_for_scan = root_path.clone();
+    let snapshot = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        scanner::scan_repos(&root_for_scan)
+    })) {
+        Ok(s) => s,
+        Err(_) => return Err("Scan panicked — see log for details".into()),
+    };
+    info!(
+        projects = snapshot.projects.len(),
+        open = snapshot.total_open,
+        done = snapshot.total_done,
+        git_repos = snapshot.git_repo_count,
+        elapsed_ms = started.elapsed().as_millis() as u64,
+        "scan complete"
+    );
+
+    if !Path::new(&args.config).exists() {
+        if let Err(e) = settings::save(&args.config, &settings) {
+            warn!(error = %e, "could not write initial config");
+        }
+    }
+
+    let allow_agents = settings::allow_agents_from_env();
+    let state = Arc::new(server::AppState::new(
+        root_path,
+        snapshot,
+        settings,
+        args.config.clone(),
+        sessions::SessionManager::new(),
+        allow_agents,
+    ));
+
+    let bind_host = args.host.trim();
+    let addr = format!("{bind_host}:{}", args.port);
+    let connect_host = if bind_host == "0.0.0.0" || bind_host == "::" {
+        "127.0.0.1"
+    } else {
+        bind_host
+    };
+    let url = format!("http://{connect_host}:{}/", args.port);
+
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .thread_name("todo-dash")
         .build()
-        .expect("tokio runtime");
+        .map_err(|e| format!("tokio runtime: {e}"))?;
 
     let serve_state = state.clone();
     let serve_addr = addr.clone();
@@ -341,50 +709,94 @@ fn main() {
     });
 
     if !desktop::wait_for_server(&url, std::time::Duration::from_secs(30)) {
-        eprintln!("Server failed to start on {url} — see {}", args.log_file.display());
-        std::process::exit(1);
+        return Err(format!(
+            "Server failed to start on {url} — see {}",
+            args.log_file.display()
+        ));
     }
 
     info!(%addr, %url, mode = ?args.mode, "dashboard ready");
 
-    match args.mode {
-        RunMode::App => {
-            if want_stdout {
-                println!("Agent Manager (desktop) → {url}");
-                println!("Logs: {}", args.log_file.display());
-            }
-            // Block until window closes
-            if let Err(e) = desktop::run_main_window(&url, "Agent Manager") {
-                error!(error = %e, "desktop window failed");
-                eprintln!("{e}");
-                // Fall back to server + browser so the user is not stuck
-                warn!("falling back to server mode");
-                if open_browser {
-                    let _ = open::that(&url);
-                }
-                // Keep process alive serving HTTP
-                loop {
-                    std::thread::sleep(std::time::Duration::from_secs(3600));
-                }
-            }
-            info!("window closed — exiting");
-            // Force-exit so background tokio workers / sessions don't hang the process
-            std::process::exit(0);
+    if want_stdout {
+        writeln_safe_stdout(&format!("Agent Manager (desktop) → {url}"));
+        writeln_safe_stdout(&format!("Logs: {}", args.log_file.display()));
+    }
+
+    if let Err(e) = desktop::run_main_window(&url, "Agent Manager") {
+        error!(error = %e, "desktop window failed");
+        warn!("falling back to server mode");
+        if open_browser {
+            let _ = open::that(&url);
         }
-        RunMode::Server => {
-            println!("Dashboard listening on {url}");
-            println!("  (use 127.0.0.1 — not localhost — if the browser fails to connect)");
-            println!("Logs: stdout + {}", args.log_file.display());
-            println!("Config: {}", args.config.display());
-            if open_browser {
-                if let Err(e) = open::that(&url) {
-                    warn!(error = %e, "could not open browser");
+        loop {
+            std::thread::sleep(std::time::Duration::from_secs(3600));
+        }
+    }
+    info!("window closed — exiting");
+    std::process::exit(0);
+}
+
+/// Thin Windows client: resolve server URL (CLI → env → client config), prompt until set.
+fn run_client_mode(args: &Args, want_stdout: bool) {
+    let client_config_path = args
+        .client_config
+        .clone()
+        .unwrap_or_else(|| client_config::default_path_near(&args.config));
+
+    let mut client_cfg = client_config::load(&client_config_path);
+
+    if let Some(ref url) = args.server_url {
+        let trimmed = url.trim();
+        if !trimmed.is_empty() {
+            match client_config::normalize_server_url(trimmed) {
+                Ok(u) => client_cfg.server_url = u,
+                Err(e) => {
+                    warn!(error = %e, "invalid --server-url; will prompt");
+                    client_cfg.server_url.clear();
                 }
-            }
-            // Block forever (server runs on runtime)
-            loop {
-                std::thread::sleep(std::time::Duration::from_secs(3600));
             }
         }
     }
+
+    info!(
+        version = env!("CARGO_PKG_VERSION"),
+        mode = "client",
+        server_url = %client_cfg.server_url,
+        client_config = %client_config_path.display(),
+        log_file = %args.log_file.display(),
+        "starting Agent Manager client"
+    );
+
+    if want_stdout {
+        writeln_safe_stdout("Agent Manager (client)");
+        if client_cfg.has_server_url() && !args.reset_server_url {
+            writeln_safe_stdout(&format!("  server: {}", client_cfg.server_url));
+        } else {
+            writeln_safe_stdout("  server URL not set — setup prompt will open");
+        }
+        writeln_safe_stdout(&format!(
+            "  client config: {}",
+            client_config_path.display()
+        ));
+        writeln_safe_stdout(&format!("Logs: {}", args.log_file.display()));
+    }
+
+    let server_url = if client_cfg.has_server_url() {
+        Some(client_cfg.server_url.clone())
+    } else {
+        None
+    };
+
+    if let Err(e) = desktop::run_client_window(desktop::ClientWindowOpts {
+        config_path: client_config_path,
+        server_url,
+        title: "Agent Manager".into(),
+        force_setup: args.reset_server_url,
+    }) {
+        error!(error = %e, "client window failed");
+        let _ = writeln_safe_stderr(&e);
+        std::process::exit(1);
+    }
+    info!("client window closed — exiting");
+    std::process::exit(0);
 }

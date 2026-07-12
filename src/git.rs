@@ -1,4 +1,5 @@
 use crate::models::{GitCommit, GitInfo, GitSummary};
+use crate::process_util;
 use regex::Regex;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -6,11 +7,11 @@ use std::sync::OnceLock;
 use std::time::Duration;
 
 fn run_git(cwd: &Path, args: &[&str]) -> Option<String> {
-    let output = Command::new("git")
-        .args(args)
-        .current_dir(cwd)
-        .output()
-        .ok()?;
+    // CREATE_NO_WINDOW: avoid a console flash per git call under the GUI app.
+    let mut cmd = Command::new("git");
+    cmd.args(args).current_dir(cwd);
+    process_util::hide_console(&mut cmd);
+    let output = cmd.output().ok()?;
     if !output.status.success() {
         return None;
     }

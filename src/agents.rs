@@ -75,6 +75,16 @@ pub struct CliStatus {
     pub name: String,
     pub available: bool,
     pub path: Option<String>,
+    /// CLI binary found and appears authenticated (best-effort).
+    /// Auth itself is performed on the front-end / user machine — never in Docker.
+    #[serde(default)]
+    pub authenticated: bool,
+    /// Short human hint for the UI (how to log in, or why unavailable).
+    #[serde(default)]
+    pub auth_hint: String,
+    /// Suggested login / auth command for the user to run locally.
+    #[serde(default)]
+    pub auth_command: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -141,7 +151,10 @@ fn which_cli(name: &str) -> Option<PathBuf> {
     // Try `where` on Windows first for .cmd/.ps1 shims
     #[cfg(windows)]
     {
-        if let Ok(output) = Command::new("where").arg(name).output() {
+        let mut cmd = Command::new("where");
+        cmd.arg(name);
+        crate::process_util::hide_console(&mut cmd);
+        if let Ok(output) = cmd.output() {
             if output.status.success() {
                 let stdout = String::from_utf8_lossy(&output.stdout);
                 if let Some(line) = stdout.lines().next() {
@@ -177,6 +190,7 @@ fn run_cli_capture(cli: &str, args: &[&str]) -> Option<String> {
     cmd.env("TERM", "dumb");
     cmd.env("NO_COLOR", "1");
     cmd.env("CI", "1");
+    crate::process_util::hide_console(&mut cmd);
     let output = cmd.output().ok()?;
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
@@ -583,16 +597,86 @@ fn discover_grok_models() -> CliModelCatalog {
     }
 }
 
+fn auth_meta(name: &str, available: bool) -> (bool, String, String) {
+    if !available {
+        return (
+            false,
+            format!("{name} CLI not found on PATH — install it on this machine (not in Docker)."),
+            String::new(),
+        );
+    }
+    match name {
+        "claude" => {
+            let cmd = "claude /login".to_string();
+            // credentials file is a strong signal
+            let home = crate::settings::home_dir();
+            let cred = home
+                .as_ref()
+                .map(|h| h.join(".claude").join(".credentials.json"))
+                .filter(|p| p.is_file());
+            if cred.is_some() {
+                (true, "Signed in (local credentials found). Auth stays on this machine.".into(), cmd)
+            } else {
+                (false, "Not signed in — run the auth command below in a terminal on this PC.".into(), cmd)
+            }
+        }
+        "grok" => {
+            let cmd = "grok".to_string();
+            let home = crate::settings::home_dir();
+            let has = home
+                .as_ref()
+                .map(|h| {
+                    h.join(".grok").is_dir()
+                        || h.join(".config").join("grok").is_dir()
+                        || std::env::var_os("XAI_API_KEY").is_some()
+                        || std::env::var_os("GROK_API_KEY").is_some()
+                })
+                .unwrap_or(false);
+            if has {
+                (true, "Credentials detected locally. Auth is not stored on the server.".into(), cmd)
+            } else {
+                (
+                    false,
+                    "No local Grok/xAI credentials found — sign in via the Grok CLI on this PC.".into(),
+                    cmd,
+                )
+            }
+        }
+        "codex" => {
+            let cmd = "codex login".to_string();
+            let home = crate::settings::home_dir();
+            let has = home
+                .as_ref()
+                .map(|h| {
+                    h.join(".codex").join("auth.json").is_file()
+                        || h.join(".codex").join("config.toml").is_file()
+                })
+                .unwrap_or(false);
+            if has {
+                (true, "Codex config present locally. Complete login on this PC if meters show signed out.".into(), cmd)
+            } else {
+                (false, "Not signed in — run `codex login` on this machine.".into(), cmd)
+            }
+        }
+        _ => (false, String::new(), String::new()),
+    }
+}
+
 pub fn discover() -> AgentDiscovery {
     let names = ["grok", "claude", "codex"];
     let clis = names
         .iter()
         .map(|n| {
             let path = which_cli(n);
+            let available = path.is_some();
+            let (authenticated, auth_hint, auth_command) = auth_meta(n, available);
             CliStatus {
                 name: n.to_string(),
-                available: path.is_some(),
+                available,
                 path: path.map(|p| p.to_string_lossy().to_string()),
+                authenticated,
+                auth_hint,
+                auth_command,
             }
         })
         .collect();
@@ -857,6 +941,7 @@ pub fn launch_interactive(cli: AgentCli, args: &[String], cwd: &Path, title: &st
     }
 
     // 3) Last resort: cmd /c start
+    // Hide the intermediate cmd.exe so only the new agent console is visible.
     let title_safe = title.replace('"', "");
     let mut cmd = Command::new("cmd.exe");
     cmd.args([
@@ -875,6 +960,7 @@ pub fn launch_interactive(cli: AgentCli, args: &[String], cwd: &Path, title: &st
     .stdin(std::process::Stdio::null())
     .stdout(std::process::Stdio::null())
     .stderr(std::process::Stdio::null());
+    crate::process_util::hide_console(&mut cmd);
 
     match cmd.spawn() {
         Ok(mut c) => {
@@ -1011,18 +1097,21 @@ pub fn launch_headless(
     match cmd.spawn() {
         Ok(_) => Ok(log_path),
         Err(e) => {
-            // Retry with no special flags
+            // Retry with CREATE_NO_WINDOW only (skip process-group flag)
             let log_file = std::fs::OpenOptions::new()
                 .append(true)
                 .open(&log_path)
                 .map_err(|e2| format!("reopen log: {e2}"))?;
             let log_err = log_file.try_clone().map_err(|e2| format!("clone log: {e2}"))?;
-            Command::new(cli.as_str())
+            let mut retry = Command::new(cli.as_str());
+            retry
                 .args(args)
                 .current_dir(cwd)
                 .stdin(std::process::Stdio::null())
                 .stdout(log_file)
-                .stderr(log_err)
+                .stderr(log_err);
+            crate::process_util::hide_console(&mut retry);
+            retry
                 .spawn()
                 .map_err(|e2| format!("failed to spawn headless agent ({e} / retry {e2})"))?;
             Ok(log_path)
